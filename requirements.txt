@@ -1,0 +1,23 @@
+# Backend — Torre Atlas Control Plane (FastAPI)
+fastapi>=0.139.2,<0.140
+uvicorn[standard]>=0.27,<0.35
+
+# Lógica de negócio (reusada pelo backend)
+requests>=2.31,<3
+anthropic>=0.30,<1
+python-dotenv>=1.0,<2
+pymongo>=4.17,<5
+fpdf2>=2.7,<3
+
+# MCP protocol (supported 1.x SDK) and tool input validation
+mcp>=1.28,<2
+jsonschema>=4.20,<5
+
+# Observability do loop do assistente (trace/generation/span). Fail-open sem
+# chaves configuradas — ver tracing.py. Pin <3: SDK v4 troca a API usada aqui.
+langfuse>=2,<3
+
+# Loop de ferramentas do assistente (assistant_graph.py) como StateGraph, com
+# checkpoint em MongoDB quando MONGODB_URI está configurada (MemorySaver senão).
+langgraph>=1,<2
+langgraph-checkpoint-mongodb>=0.5,<1
