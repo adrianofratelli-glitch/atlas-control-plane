@@ -130,8 +130,8 @@ demo, não um defeito a esconder.
 | `manualChunks` | separa `leafygreen`, `markdown`, `vendor` | evita bundle único > 500 kB e melhora cache do browser entre deploys |
 
 `frontend/src/styles.css` traz os tokens dark do MongoDB
-(`--bg-primary`, `--accent`, `--text-pri/sec/muted`) e tipografia Outfit +
-JetBrains Mono — mesma paleta das outras PoVs do portfólio.
+(`--bg-primary`, `--accent`, `--text-pri/sec/muted`) e tipografia Special Gothic +
+Source Code Pro — mesma paleta das outras PoVs do portfólio.
 
 ### Assinatura visual do portfólio (v2)
 
