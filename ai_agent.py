@@ -18,9 +18,9 @@ MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5")
 def _get_client() -> anthropic.Anthropic:
     """Share one HTTP connection pool across analysis and chat requests."""
     return anthropic.Anthropic(
-        api_key="dummy",
+        api_key=os.getenv("ANTHROPIC_API_KEY", ""),
         base_url=os.getenv("ANTHROPIC_BASE_URL"),
-        default_headers={"api-key": os.getenv("ANTHROPIC_API_KEY", "")},
+        default_headers={"Authorization": "Bearer " + os.getenv("ANTHROPIC_API_KEY", "")},
     )
 
 

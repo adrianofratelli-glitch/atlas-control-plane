@@ -47,8 +47,8 @@ async def _produce(messages, project_id, cluster_name, session_id, client=None, 
     if own_client:
         base_url = os.getenv("ANTHROPIC_BASE_URL")
         key = os.getenv("ANTHROPIC_API_KEY", "")
-        client = AsyncAnthropic(api_key="dummy" if base_url else key, base_url=base_url,
-                                default_headers={"api-key": key} if base_url else {},
+        client = AsyncAnthropic(api_key=key, base_url=base_url,
+                                default_headers={"Authorization": f"Bearer {key}"} if base_url else {},
                                 timeout=60, max_retries=0)
     last_user_text = next((m.get("content") for m in reversed(history) if m.get("role") == "user"
                            and isinstance(m.get("content"), str)), "")
