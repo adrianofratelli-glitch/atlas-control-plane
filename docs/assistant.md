@@ -24,7 +24,7 @@ São 28 ferramentas. Não há shell, MQL arbitrário com efeitos colaterais, adm
 
 ## Configuração
 
-Instale `requirements.txt`; `run_react.sh` também verifica a presença do SDK MCP. São usadas as mesmas variáveis Atlas, `MONGODB_URI`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` e `CLAUDE_MODEL` do restante da aplicação. O gateway personalizado conserva o cabeçalho `api-key` existente; sem gateway, usa autenticação nativa Anthropic. Credenciais não são enviadas ao frontend.
+Instale `requirements.txt`; `run_react.sh` também verifica a presença do SDK MCP. São usadas as mesmas variáveis Atlas, `MONGODB_URI`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` e `CLAUDE_MODEL` do restante da aplicação. O gateway personalizado usa `Authorization: Bearer` e a chave real em `x-api-key`; sem gateway, usa autenticação nativa Anthropic. Credenciais não são enviadas ao frontend.
 
 A conexão `MONGODB_URI` é validada contra o cluster selecionado antes de cada operação de dados e novamente antes da execução. Se não corresponder, a operação é recusada. Uma única URI não dá acesso aos dados de todos os clusters da organização; a API Atlas pode listar outros clusters, mas a conexão de dados precisa corresponder ao alvo escolhido.
 
