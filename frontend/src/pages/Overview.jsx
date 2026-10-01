@@ -6,7 +6,7 @@ import { Leaf, KpiGrid, Kpi, Section, StatusDot } from '../components.jsx'
 import { getAlerts } from '../api.js'
 
 const fmt = (n) => Math.round(n).toLocaleString('pt-BR')
-const dotColor = (s) => s === 'IDLE' ? '#00ED64' : s === 'PAUSED' ? '#f97316' : '#06b6d4'
+const dotColor = (s) => s === 'IDLE' ? '#00ED64' : s === 'PAUSED' ? '#ff4f00' : '#00c2eb'
 function mode(arr) { const m = {}; let best = arr[0], bc = 0; arr.forEach(v => { m[v] = (m[v] || 0) + 1; if (m[v] > bc) { bc = m[v]; best = v } }); return best }
 
 export default function Overview({ clusters }) {
@@ -40,14 +40,14 @@ export default function Overview({ clusters }) {
 
       <KpiGrid>
         <Kpi label="Total Clusters" value={clusters.length} delta={`${dedic.length} dedicados`} />
-        <Kpi label="Projetos" value={projects.length} color="#06b6d4" />
+        <Kpi label="Projetos" value={projects.length} color="#00c2eb" />
         <Kpi label="Estáveis (IDLE)" value={`${idle}/${clusters.length}`}
              delta={idle === clusters.length ? 'todos estáveis' : `${clusters.length - idle} pausado(s)/em transição`}
-             color={idle === clusters.length ? '#00ED64' : '#f97316'} />
+             color={idle === clusters.length ? '#00ED64' : '#ff4f00'} />
         <Kpi label="Tier + comum" value={topTier} color="#00A35C" />
         <Kpi label="Custo Est./Mês" value={`R$ ${fmt(costBrl)}`} delta={`≈ USD ${fmt(costUsd)} · tabela us-east-1`} />
         <Kpi label="Alertas" value={alerts} delta={alerts === 0 ? '✓ nenhum' : `↑ ${alerts} abertos`}
-             color={alerts === 0 ? '#00ED64' : '#f97316'} />
+             color={alerts === 0 ? '#00ED64' : '#ff4f00'} />
       </KpiGrid>
 
       {/* Row of informational chips */}

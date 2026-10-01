@@ -1,20 +1,20 @@
 /* styles.css — Torre · visual "MongoDB pitch" (navy + green glow) */
 :root {
-  --bg-primary: #001E2B;
-  --bg-secondary: #112733;
-  --bg-card: #1C2D38;
-  --bg-card-hover: #263C49;
-  --border-subtle: #3D4F58;
+  --bg-primary: #061621;
+  --bg-secondary: #001e2b;
+  --bg-card: #0a2633;
+  --bg-card-hover: #10303f;
+  --border-subtle: #2a424d;
   --border-accent: rgba(0, 237, 100, 0.25);
-  --text-pri: #E8EDEB;
-  --text-sec: #C1C7C6;
-  --text-muted: #889397;
+  --text-pri: #fdfff5;
+  --text-sec: #cdd5ce;
+  --text-muted: #9ea2a1;
   --accent: #00ED64;
   --accent-glow: rgba(0, 237, 100, 0.1);
-  --link: #0498EC;
-  --orange: #FFC010;
-  --purple: #B45AF2;
-  --cyan: #0498EC;
+  --link: #3d9dff;
+  --orange: #ffad00;
+  --purple: #d959ea;
+  --cyan: #3d9dff;
   --teal: #00A35C;
   color-scheme: dark;
   /* legacy aliases */
@@ -37,7 +37,7 @@ html, body, #root {
   height: 100%;
   background: var(--bg-primary);
   color: var(--text-sec);
-  font-family: 'Outfit', 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Special Gothic', 'Helvetica Neue', Arial, sans-serif;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
@@ -58,12 +58,12 @@ body::after {
   background: radial-gradient(circle, rgba(0,237,100,0.07) 0%, transparent 65%);
 }
 
-/* force Outfit over LeafyGreen's built-in Euclid */
-h1, h2, h3, h4, h5, h6, p, button, input, select, textarea, td, th, li, a, label, div, span {
-  font-family: 'Outfit', 'Helvetica Neue', Arial, sans-serif !important;
+/* force Special Gothic over LeafyGreen's built-in the template face (Euclid) */
+h3, h4, h5, h6, p, button, input, select, textarea, td, th, li, a, label, div, span {
+  font-family: 'Special Gothic', 'Helvetica Neue', Arial, sans-serif !important;
 }
 .mono, .mono *, code, code *, pre, pre *, kbd {
-  font-family: 'JetBrains Mono', ui-monospace, 'Source Code Pro', monospace !important;
+  font-family: 'Source Code Pro', ui-monospace, 'Source Code Pro', monospace !important;
 }
 
 ::selection { color: var(--text-pri); background: rgba(0,237,100,0.24); }
@@ -106,7 +106,7 @@ h1, h2, h3, h4, h5, h6, p, button, input, select, textarea, td, th, li, a, label
 .sidenav-item svg { color: currentColor; opacity: .78; }
 .sidenav-item.active svg { opacity: 1; }
 .sidenav-section {
-  font-family: 'JetBrains Mono', monospace !important;
+  font-family: 'Source Code Pro', monospace !important;
   font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.14em;
   color: #5f869e; padding: 18px 12px 6px; font-weight: 600;
 }
@@ -147,11 +147,11 @@ h1, h2, h3, h4, h5, h6, p, button, input, select, textarea, td, th, li, a, label
   box-shadow: 0 14px 40px rgba(0,0,0,0.35);
 }
 .kpi-label {
-  font-family: 'JetBrains Mono', monospace !important;
+  font-family: 'Source Code Pro', monospace !important;
   font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.12em;
   color: var(--text-muted); font-weight: 600; margin-bottom: 9px;
 }
-.kpi-value { font-size: 26px; font-weight: 800; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.kpi-value, .kpi-value.mono, .mono.kpi-value { font-family: var(--pov-font-display) !important; font-size: 38px; font-weight: 400; line-height: 1; letter-spacing: .01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .kpi-delta { font-size: 11px; color: var(--text-muted); margin-top: 7px; }
 
 /* ── Fleet card ── */
@@ -171,7 +171,7 @@ h1, h2, h3, h4, h5, h6, p, button, input, select, textarea, td, th, li, a, label
 
 /* ── Section label (pitch-style eyebrow) ── */
 .section-title {
-  font-family: 'JetBrains Mono', monospace !important;
+  font-family: 'Source Code Pro', monospace !important;
   font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em;
   color: var(--accent); font-weight: 600;
   margin: 26px 0 14px; padding-bottom: 0; border-bottom: none;
@@ -188,7 +188,7 @@ table.mdb {
 }
 table.mdb th {
   text-align: left;
-  font-family: 'JetBrains Mono', monospace !important;
+  font-family: 'Source Code Pro', monospace !important;
   font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.1em;
   color: var(--text-muted); padding: 11px 14px;
   background: var(--bg-secondary);
@@ -237,7 +237,7 @@ pre { background: var(--bg-secondary); border: 1px solid var(--border-subtle); b
 .bubble-body { flex: 1; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 14px 18px; min-width: 0; }
 .bubble.user .bubble-body { background: rgba(0,237,100,0.06); border-color: var(--border-accent); }
 .bubble-name {
-  font-family: 'JetBrains Mono', monospace !important;
+  font-family: 'Source Code Pro', monospace !important;
   font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.1em;
   color: var(--text-muted); margin-bottom: 6px; font-weight: 600;
 }
@@ -255,14 +255,14 @@ pre { background: var(--bg-secondary); border: 1px solid var(--border-subtle); b
 .md pre code { background: none; border: none; padding: 0; color: var(--text-sec); }
 .md table { border-collapse: collapse; margin: 10px 0; width: 100%; }
 .md th, .md td { border: 1px solid var(--border-subtle); padding: 6px 12px; font-size: 12px; text-align: left; }
-.md th { background: var(--bg-secondary); color: var(--accent); font-family: 'JetBrains Mono', monospace !important; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+.md th { background: var(--bg-secondary); color: var(--accent); font-family: 'Source Code Pro', monospace !important; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
 .md a { color: var(--link); }
 .md strong { color: var(--text-pri); }
 .md blockquote { border-left: 3px solid var(--accent); margin: 8px 0; padding: 4px 14px; color: var(--text-muted); }
 
 /* ── Chips ── */
 .chip {
-  font-family: 'JetBrains Mono', monospace !important;
+  font-family: 'Source Code Pro', monospace !important;
   background: rgba(255,255,255,0.03);
   border: 1px solid var(--border-subtle); border-radius: 20px;
   padding: 5px 13px; font-size: 11px; letter-spacing: 0.02em;
@@ -342,7 +342,7 @@ pre { background: var(--bg-secondary); border: 1px solid var(--border-subtle); b
 .assistant-actions > .row { justify-content: space-between; flex-wrap: wrap; }
 .assistant-muted { color: var(--text-sec); font-size: 13px; line-height: 1.7; }
 .assistant-action { border: 1px solid var(--border-accent); border-left: 3px solid #00a35c; background: var(--bg-card); border-radius: 10px; padding: 20px; margin: 14px 0; overflow-wrap: anywhere; }
-.assistant-action.destructive { border-left-color: #f97316; }
+.assistant-action.destructive { border-left-color: #ff4f00; }
 .assistant-action-heading { display: flex; gap: 12px; justify-content: space-between; flex-wrap: wrap; }
 .assistant-action-heading > span { font-size: 12px; color: var(--text-sec); }
 .assistant-action p { margin: 10px 0; }
@@ -352,7 +352,7 @@ pre { background: var(--bg-secondary); border: 1px solid var(--border-subtle); b
 .assistant-action-buttons { margin-top: 18px; flex-wrap: wrap; }
 .assistant-action-buttons small { color: var(--text-sec); }
 .assistant-result { border-top: 1px solid var(--border-subtle); margin-top: 14px; padding-top: 14px; }
-.assistant-error { border: 1px solid #f97316; border-radius: 8px; padding: 16px; margin: 16px 0; color: var(--text-pri); }
+.assistant-error { border: 1px solid #ff4f00; border-radius: 8px; padding: 16px; margin: 16px 0; color: var(--text-pri); }
 .assistant-composer { position: sticky; bottom: 0; padding: 18px 0; background: var(--bg-primary); border-top: 1px solid var(--border-accent); }
 .assistant-composer label { display: block; font-size: 13px; margin-bottom: 9px; color: var(--text-sec); }
 .assistant-composer textarea { width: 100%; resize: vertical; min-height: 86px; max-height: 240px; padding: 12px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text-pri); font: inherit; box-sizing: border-box; }

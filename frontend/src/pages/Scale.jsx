@@ -59,9 +59,9 @@ export default function Scale({ clusters, config }) {
       </div>
 
       <KpiGrid>
-        <Kpi label="Cluster" value={sel.cluster_name} color="#06b6d4" />
+        <Kpi label="Cluster" value={sel.cluster_name} color="#00c2eb" />
         <Kpi label="Tier Atual" value={sel.tier} color="#00A35C" />
-        <Kpi label="Região" value={sel.region_pretty} color="#889397" />
+        <Kpi label="Região" value={sel.region_pretty} color="#9ea2a1" />
         <Kpi label="Custo Est./Mês" value={`R$ ${sel.cost_brl.toLocaleString('pt-BR')}`} delta={`≈ USD ${sel.cost_usd.toLocaleString('pt-BR')} · tabela us-east-1`} />
       </KpiGrid>
 
@@ -160,7 +160,7 @@ export default function Scale({ clusters, config }) {
           </Banner>
         )}
         {newIdx < curIdx && newIdx >= 0 && (
-          <div style={{ fontSize: 11, color: '#f97316', marginTop: 10 }}>
+          <div style={{ fontSize: 11, color: '#ff4f00', marginTop: 10 }}>
             ⚠️ Scale down exige que dados e oplog caibam no storage do tier menor — o Atlas bloqueia a operação se não couberem.
           </div>
         )}
@@ -186,7 +186,7 @@ function MetricBar({ label, pct, sub, warn = 75, crit = 90 }) {
       <div style={{ height: 6, background: 'var(--bg-secondary)', borderRadius: 3, overflow: 'hidden', margin: '8px 0 6px' }}>
         <div style={{ width: `${v}%`, height: '100%', background: color }} />
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: "'JetBrains Mono',ui-monospace,monospace" }}>{sub}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: "'Source Code Pro',ui-monospace,monospace" }}>{sub}</div>
     </div>
   )
 }

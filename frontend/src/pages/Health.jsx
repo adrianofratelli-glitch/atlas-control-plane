@@ -46,10 +46,10 @@ export default function Health({ clusters }) {
                 <div key={i} style={{ marginBottom: 10 }}>
                   <div className="row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
                     <span style={{ fontSize: 13 }}>{c.ok ? '●' : '○'} {c.label} <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>· {c.detail}</span></span>
-                    <span className="mono" style={{ fontSize: 12, color: c.earned === c.max ? '#00ED64' : '#f97316' }}>{c.earned}/{c.max} pts</span>
+                    <span className="mono" style={{ fontSize: 12, color: c.earned === c.max ? '#00ED64' : '#ff4f00' }}>{c.earned}/{c.max} pts</span>
                   </div>
                   <div style={{ height: 6, background: 'var(--bg-secondary)', borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{ width: `${(c.earned / c.max) * 100}%`, height: '100%', background: c.earned === c.max ? '#00ED64' : '#f97316' }} />
+                    <div style={{ width: `${(c.earned / c.max) * 100}%`, height: '100%', background: c.earned === c.max ? '#00ED64' : '#ff4f00' }} />
                   </div>
                 </div>
               ))}

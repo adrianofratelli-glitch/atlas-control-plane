@@ -101,8 +101,8 @@ export default function Profiler({ clusters, config }) {
       {rows && rows.length > 0 && (
         <>
           <KpiGrid>
-            <Kpi label="Query Shapes" value={rows.length} color="#f97316" />
-            <Kpi label="Execuções Lentas" value={totalExec.toLocaleString('pt-BR')} color="#06b6d4" />
+            <Kpi label="Query Shapes" value={rows.length} color="#ff4f00" />
+            <Kpi label="Execuções Lentas" value={totalExec.toLocaleString('pt-BR')} color="#00c2eb" />
             <Kpi label="COLLSCANs" value={collscans} delta={collscans ? 'sem índice' : '✓ nenhum'} color={collscans ? '#FF4444' : '#00ED64'} />
             <Kpi label="Pior Latência" value={`${worst.toLocaleString('pt-BR')}ms`} color="#ef4444" />
           </KpiGrid>

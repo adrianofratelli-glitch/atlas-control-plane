@@ -6,7 +6,7 @@ import { KpiGrid, Kpi, Section } from '../components.jsx'
 import { getFinops, getInvoice } from '../api.js'
 
 const fmt = (n) => Math.round(n).toLocaleString('pt-BR')
-const COLOR = { green: '#00ED64', yellow: '#FFC010', red: '#FF6960', muted: '#889397' }
+const COLOR = { green: '#00ED64', yellow: '#ffad00', red: '#FF6960', muted: '#9ea2a1' }
 const VAR = { green: 'green', yellow: 'yellow', red: 'red', muted: 'lightgray' }
 
 export default function FinOps({ clusters }) {
@@ -40,10 +40,10 @@ export default function FinOps({ clusters }) {
              delta="real · Atlas Billing API" color="#00ED64" />
         <Kpi label="Total USD/Mês (est.)" value={`$${fmt(totalUsd)}`} delta="tabela us-east-1" />
         <Kpi label="Total BRL/Mês (est.)" value={`R$ ${fmt(totalBrl)}`} color="#00A35C" />
-        <Kpi label="Média/Cluster (est.)" value={`R$ ${fmt(avg)}`} color="#06b6d4" />
+        <Kpi label="Média/Cluster (est.)" value={`R$ ${fmt(avg)}`} color="#00c2eb" />
         <Kpi label="Economia Potencial" value={busy ? '…' : `$${fmt(data?.potential_savings_usd || 0)}`}
              delta={busy ? 'avaliando…' : overprov.length ? `${overprov.length} subutilizado(s) · vs tier abaixo` : 'frota otimizada'}
-             color={overprov.length ? '#f97316' : '#00ED64'} />
+             color={overprov.length ? '#ff4f00' : '#00ED64'} />
       </KpiGrid>
 
       {!busy && <Banner variant={verdict.variant} style={{ marginBottom: 18 }}>{verdict.text}</Banner>}

@@ -77,7 +77,7 @@ export default function PerformanceAdvisor({ clusters, config }) {
                   <Button size="small" onClick={() => runIndex(i, ns, idx.index)}>▶ Executar Índice</Button>
                 )}
                 {config.mongodb && !sel.is_uri_target && (
-                  <div style={{ fontSize: 11, color: '#f97316' }}>
+                  <div style={{ fontSize: 11, color: '#ff4f00' }}>
                     ⚠️ Execução desabilitada — o MONGODB_URI do servidor aponta para outro cluster.
                   </div>
                 )}

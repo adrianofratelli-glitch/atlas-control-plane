@@ -34,7 +34,7 @@ export function Section({ title, badge, sub }) {
 }
 
 export function StatusDot({ status }) {
-  const c = status === 'IDLE' ? '#00ED64' : status === 'PAUSED' ? '#f97316' : '#06b6d4'
+  const c = status === 'IDLE' ? '#00ED64' : status === 'PAUSED' ? '#ff4f00' : '#00c2eb'
   return <span className="dot" style={{ background: c, boxShadow: `0 0 8px ${c}` }} />
 }
 
@@ -68,7 +68,7 @@ export function MiniChart({ series, height = 160 }) {
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 8, padding: '10px 12px' }}>
       <div className="row" style={{ gap: 18, marginBottom: 6, fontSize: 11 }}>
         <span className="mono" style={{ color: '#00ED64' }}>● CPU % (máx {maxCpu.toFixed(0)})</span>
-        <span className="mono" style={{ color: '#06b6d4' }}>● Queries/s (máx {maxQ.toFixed(0)})</span>
+        <span className="mono" style={{ color: '#00c2eb' }}>● Queries/s (máx {maxQ.toFixed(0)})</span>
         <span className="mono" style={{ color: '#5f869e', marginLeft: 'auto' }}>últimas 24h</span>
       </div>
       <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: `${height}px`, display: 'block' }}>
@@ -77,7 +77,7 @@ export function MiniChart({ series, height = 160 }) {
         ))}
         <path d={areaCpu} fill="rgba(0,237,100,0.10)" />
         <path d={lineCpu} fill="none" stroke="#00ED64" strokeWidth="3" vectorEffect="non-scaling-stroke" />
-        <path d={lineQ} fill="none" stroke="#06b6d4" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+        <path d={lineQ} fill="none" stroke="#00c2eb" strokeWidth="3" vectorEffect="non-scaling-stroke" />
       </svg>
     </div>
   )
