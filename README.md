@@ -1,5 +1,7 @@
 # Torre: Atlas Control Plane
 
+Version **3.1.0** · [Changelog](CHANGELOG.md)
+
 One screen for an entire fleet of MongoDB Atlas clusters, with a Claude assistant grounded in the real clusters rather than generic MongoDB trivia. Ask whether an M30 is enough and it answers from the p95 CPU of *your* cluster.
 
 Everything comes from the Atlas Admin API v2. The UI is in Brazilian Portuguese and so is the briefing documentation; the code is in English.
@@ -79,6 +81,22 @@ Docker (nginx serves the build and proxies `/api`):
 ```bash
 docker build -t torre . && docker run --env-file .env -p 18085:8080 torre
 ```
+
+## FinOps por nó
+
+FinOps compara CPU média dos nós em intervalos comuns de cinco minutos, p95 do nó mais carregado, janela recente e cobertura real de 24h. Dados ausentes e clusters pausados têm estados explícitos. Redução de tier exige cobertura de pelo menos 90% e permanece condicionada à validação do tier alvo. O botão **Analisar com MCP + LLM** coleta métricas, Advisor e queries recentes por MCP e gera uma resposta do modelo com progresso e prazo limitado. `explain` aprofundado fica no Assistente. A API de mensagens chama Claude; o MCP conecta o modelo às ferramentas de dados. Todos os caminhos de análise/chat da UI, inclusive rotas de compatibilidade, usam esse runtime MCP.
+
+Carga de validação somente leitura, com rampa de concorrência e limite de cinco segundos por consulta:
+
+```bash
+venv/bin/python stress_readonly.py --minutes 6 --workers 6 --output /tmp/torre-stress.json
+```
+
+O launcher inicia essa carga automaticamente por 6 minutos, com até 6 workers. Use `TORRE_STRESS=0 ./run_react.sh` para abrir sem carga, ou configure `STRESS_MINUTES` e `STRESS_WORKERS`. O encerramento da PoV interrompe a carga; um lock impede testes duplicados. Logs/resultados ficam em `.assistant-state/startup-stress.*`.
+
+Escala consulta os indicadores a cada 5 segundos, com nova coleta Atlas em cada ciclo e proteção contra consultas simultâneas duplicadas. Mostra o horário da consulta e da amostra CPU por nó. O histórico continua sendo usado para decidir capacidade, mesmo sem os gráficos de 24h na tela.
+
+O script exige as coleções existentes `banco_inter.transacoes` e `banco_inter.fatura`, utiliza primary e secondaries, não altera dados e encerra após o prazo. Resultados sintéticos não substituem histórico de produção. Estimativas de custo usam tabela de referência AWS us-east-1; incluem tiers pausados e não representam cobrança real.
 
 ## Operations assistant via MCP
 

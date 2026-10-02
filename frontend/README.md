@@ -12,3 +12,7 @@ npm run dev      # sobe o servidor de dev do Vite
 npm run build    # build de produção
 npm run preview  # pré-visualiza o build de produção
 ```
+
+## Versão 3.1.0
+
+Escala consulta métricas a cada cinco segundos sem sobrepor requisições; os valores mudam quando o Atlas disponibiliza uma nova amostra. FinOps mantém a análise em andamento ao navegar para outra aba e recebe o relatório pelo runtime MCP real.

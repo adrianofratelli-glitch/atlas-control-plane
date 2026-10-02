@@ -42,9 +42,9 @@ Bearer`.
 |---|---|---|
 | Frota | `getConfig`, `getClusters`, `getAlerts`, `getInvoice` | `/config`, `/clusters`, `/alerts`, `/invoice` |
 | Por cluster | `getPA`, `getSlow`, `getMeasurements`, `getSeries`, `getHealth` | `/cluster/{project_id}/{cluster_name}/{pa,slow,measurements,series,health}` |
-| Escala | `getScaling`, `scaleCluster` | `GET .../scaling`, `POST .../scale` |
+| Escala | `getLiveMetrics`, `getScaling`, `scaleCluster` | `GET .../live`, `GET .../scaling`, `POST .../scale` |
 | Otimização | `explainQuery`, `createIndex` | `POST /explain`, `POST /index` |
-| FinOps | `getFinops` | `/finops` |
+| FinOps | `getFinops`, `streamAssistant` | `/finops`, `/assistant` (`mode=report`) |
 | Histórico de chat | `listConversations`, `getConversation`, `deleteConversation` | `/chat/conversations...` |
 | Relatório | `downloadReport` (fetch, resposta binária PDF) | `POST /report` |
 
@@ -103,7 +103,9 @@ recomendação diferente.
 
 ### FinOps — `docs/screenshots/04-finops.png`
 
-Custo por cluster e onde está o desperdício. Consome `/finops`.
+Custo por cluster, média de CPU dos nós, pior p95 e cobertura. Consome `/finops`; fatura indisponível e clusters pausados têm estados explícitos. O botão de análise usa MCP real e mostra progresso, erro e relatório exportável. A análise permanece montada ao trocar de aba.
+
+Escala coleta `/live` a cada cinco segundos, mostra média e nó mais carregado, RAM/disco/conexões do primário e tabela individual com timestamps. Sem gráficos 24h ou aba de demonstração do protocolo MCP. Os valores só mudam quando a fonte fornece nova amostra.
 
 ### Assistente (Chat) — `docs/screenshots/05-ai-chat.png`
 

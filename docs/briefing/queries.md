@@ -100,7 +100,7 @@ sozinho diz que está lento, o `explain` diz por quê.
 
 ---
 
-## 3. Assistente operacional — 28 ferramentas MCP (`assistant_tools.py`)
+## 3. Assistente operacional — 29 ferramentas MCP (`assistant_tools.py`)
 
 Todas as ferramentas de dado são geradas dinamicamente por `ClusterTools`
 (`assistant_tools.py:102-307`), vinculadas ao `project_id`/`cluster_name`
@@ -270,3 +270,11 @@ em campo de escrita frequente, não só leitura.
   `atlas_client.py`, com cache TTL em 3 delas (projetos, clusters, primário).
 - **Único ponto de escrita sobre a Admin API**: `scale_cluster`
   (`atlas_client.py:186`).
+
+## Insights e carga somente leitura — v3.1.0
+
+`atlas_cluster_insights` usa os processos identificados exatamente pelo cluster e alinha CPU dos nós em buckets UTC de cinco minutos. O histórico mantém pontos nulos; cobertura simultânea é requisito para recomendar redução.
+
+`mongo_explain` aceita `sort` validado (direções 1 ou -1) e limite de até 100 documentos. Consultas lentas são ordenadas pelas mais recentes e paginadas.
+
+`stress_readonly.py` usa um único pool de conexão, divide leituras entre primário e secundários, limita concorrência e duração e aplica `maxTimeMS`. O workload é identificado por `appName`/`comment`, permitindo distinguir carga sintética de tráfego orgânico nos relatórios. Não grava no dataset.

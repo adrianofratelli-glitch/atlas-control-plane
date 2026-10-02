@@ -19,7 +19,8 @@ Admin API — não um resumo pré-mastigado.
 | Frontend | React 18 + Vite + LeafyGreen (design system MongoDB) | `frontend/src/` |
 | Backend | FastAPI (Python) | `api.py` |
 | Cluster observado | Atlas Admin API v2 (`HTTPDigestAuth`) | `atlas_client.py` |
-| IA — análise/chat/PDF | Anthropic Claude, direto via SDK | `ai_agent.py` |
+| IA — análise/chat | Claude via gateway configurado, evidências pelo MCP real | `assistant_runtime.py`, `assistant_graph.py`, `assistant_report.py` |
+| PDF | Renderização local do texto recebido | `ai_agent.py` |
 | IA — assistente operacional | Anthropic Claude + MCP (Model Context Protocol) sobre stdio | `assistant_runtime.py`, `torre_mcp_server.py`, `assistant_tools.py` |
 | Memória do chat | MongoDB Atlas via `pymongo` | `chat_memory.py` |
 | Aprovações do assistente | SQLite local, single-host | `assistant_actions.py` (`.assistant-state/actions.sqlite3`) |
@@ -32,11 +33,11 @@ Admin API — não um resumo pré-mastigado.
 |---|---|
 | `api.py` | backend FastAPI, todas as rotas `/api/...`, middleware de request-id e métricas, auth opcional por bearer token |
 | `atlas_client.py` | cliente da Atlas Admin API v2 + heurística determinística de recomendação de escala |
-| `ai_agent.py` | análise Claude (síntese de custo/performance/status), chat com streaming, geração de relatório PDF |
+| `ai_agent.py` | utilitários de uso do modelo, renderização de PDF e helpers legados; rotas da UI usam o runtime MCP |
 | `chat_memory.py` | histórico de chat persistido no Atlas via pymongo (ver `queries.md`) |
 | `assistant_api.py` | rotas `/api/assistant/...` — conversa e aprovação/execução de ações |
 | `assistant_runtime.py` | loop de ferramentas Anthropic ↔ MCP do assistente operacional (ver `agent-behavior.md`) |
-| `assistant_tools.py` | catálogo das 28 ferramentas MCP, validação de entrada, leitura e preparação de escrita |
+| `assistant_tools.py` | catálogo das 29 ferramentas MCP, validação de entrada, leitura e preparação de escrita |
 | `assistant_actions.py` | `ActionStore` — aprovações duráveis, single-use, em SQLite |
 | `torre_mcp_server.py` | servidor MCP sobre stdio; expõe só leitura + preparação, nunca execução |
 | `observability.py` | log estruturado (`LOG_JSON=1`) e métricas em processo |
@@ -55,13 +56,16 @@ React (frontend/src/pages/*.jsx)
   <-- JSON --
 ```
 
-### Chat simples (análise/relatório)
+### Análise e relatórios (v3.1.0)
 
 ```
-React Chat.jsx --fetch streaming--> /api/chat, /api/analyze, /api/report
-  --> ai_agent.py --> Anthropic Claude (texto) + dados já buscados da Admin API
-  --> chat_memory.py --> MongoDB Atlas (histórico)
+React --fetch NDJSON--> /api/assistant (mode=report)
+  --> assistant_runtime --> MCP stdio --> torre_mcp_server --> Atlas/driver
+  --> assistant_report --> Claude (API de mensagens via gateway configurado)
+  <-- relatório em streaming, erro explícito ou conclusão
 ```
+
+`/api/analyze` e `/api/chat` são adaptadores desse mesmo runtime. `/api/report` renderiza o PDF localmente. O modelo recebe evidências retornadas por chamadas MCP reais, sem mocks no caminho de produção.
 
 ### Assistente operacional (aba Assistente)
 
@@ -82,7 +86,7 @@ Detalhado nó a nó em `agent-behavior.md`.
 
 - **O número vem da heurística determinística; o modelo escreve a justificativa.**
   A recomendação de escala (subir/descer/manter tier) sai de
-  `AtlasClient.recommend_scaling` (`atlas_client.py:470-565`), pura, testada com
+  `cluster_insights.summarize` e as guardas de `atlas_client.py`, testadas com
   `unittest`, sem LLM no caminho. O Claude recebe a recomendação pronta e
   traduz em argumento de negócio. Isso existe porque a pergunta que sempre vem
   é "esse tier foi o modelo que chutou?" — a resposta precisa ser "não, tem
@@ -100,7 +104,7 @@ Detalhado nó a nó em `agent-behavior.md`.
 - **Escopo de escrita minimizado e isolado.** Sobre a Admin API, o único ponto
   de escrita é `AtlasClient.scale_cluster` (`atlas_client.py:186-197`),
   chamado só depois de aprovação explícita — qualquer revisão de segurança tem
-  um lugar único pra olhar. No assistente operacional, todas as 28 ferramentas
+  um lugar único pra olhar. No assistente operacional, todas as 29 ferramentas
   MCP são somente-leitura ou apenas preparam uma proposta (`ClusterTools.prepare`,
   `assistant_tools.py:218-251`); a execução real fica isolada em
   `ClusterTools.execute` (`assistant_tools.py:253-307`) e só roda depois que
@@ -159,3 +163,11 @@ python populate_workload.py                 # semeia carga pra Performance Advis
 python populate_profiler.py
 docker build -t torre . && docker run --env-file .env -p 18085:8080 torre
 ```
+
+## Coleta e demo — v3.1.0
+
+`cluster_insights.py` agrega os nós corretos do cluster, alinha CPU em intervalos comuns de cinco minutos e conserva lacunas. FinOps diferencia clusters pausados, erro de fatura e cobertura insuficiente. Redução exige pelo menos 90% de cobertura simultânea, dados recentes suficientes e snapshots completos; memória usada não prova pressão de cache.
+
+Escala consulta `/live` a cada cinco segundos, sem requisições sobrepostas. `metrics_cache.py` usa apenas um segundo de cache nesse endpoint para colapsar consultas concorrentes; recomendações históricas usam 60 segundos. As amostras Atlas têm granularidade de um minuto e timestamps por nó. Os gráficos históricos foram retirados da tela, mas continuam alimentando as guardas.
+
+`run_react.sh` inicia carga somente leitura de seis minutos, até seis workers, sobre o dataset existente. `TORRE_STRESS=0` desativa; `STRESS_MINUTES`/`STRESS_WORKERS` ajustam o teste. Não cria documentos, índices ou tiers. Logs e evidências ficam locais em `.assistant-state/`, ignorados pelo Git.

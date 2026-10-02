@@ -9,10 +9,7 @@
 > client Anthropic e do trace Langfuse (ligados ao `async with` do transporte
 > stdio), e só delega a alternância pensar/agir pro grafo.
 >
-> O chat simples de análise/relatório (`/api/chat`, `/api/analyze`,
-> `/api/report`, em `ai_agent.py`) **não** passa por esse loop de ferramentas —
-> é uma chamada direta ao Claude com o contexto já buscado pelo backend. Está
-> descrito na seção 5.
+> As rotas `/api/chat` e `/api/analyze` também usam esse runtime MCP real. Relatórios (`mode=report`) coletam evidências por MCP e fazem uma única chamada de síntese; o chat mantém o loop de ferramentas. `/api/report` apenas renderiza PDF.
 
 ## 1. Visão geral do fluxo
 
@@ -210,3 +207,9 @@ análise textual, chat com streaming, geração de relatório PDF. Modelo defaul
 Sonnet 5 (`CLAUDE_MODEL`). Histórico compartilha a mesma coleção
 `torre.chat_history`. Esse caminho não tem ferramentas, não tem aprovação e
 não gera ações — é só leitura + texto.
+
+## Relatórios de FinOps — v3.1.0
+
+`assistant_report.py` coleta `atlas_cluster_insights`, `atlas_cluster`, `atlas_indexes` e `atlas_slow_queries` na mesma sessão MCP. Se o tier estiver disponível, consulta `atlas_cost`. Cada leitura tem prazo de 45s; a resposta do modelo, 75s. Erros de coleta viram evidências indisponíveis, sem serem interpretados como zero. O runtime envia heartbeat a cada cinco segundos, e o frontend encerra o estado de espera com conclusão ou erro explícito.
+
+O relatório não prepara alterações nem executa explains automaticamente. Distingue sugestões do Advisor de índices existentes e limita decisões de capacidade à cobertura disponível. O chat pode aprofundar a análise com `mongo_explain`, incluindo filtro, sort e limite.

@@ -75,3 +75,9 @@ O teste visual `tests/browser-assistant.cjs` usa Playwright e intercepta todas a
 ## Observability opcional: Langfuse
 
 Com `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` no `.env` (`tracing.py`), cada turno vira uma trace: uma generation por passo de raciocínio do LLM, um span por tool call MCP. Fail-open — sem as chaves, ou com o Langfuse fora do ar, vira no-op e o turno segue normal (um `auth_check()` roda uma vez por processo pra nunca expor um link que dê 404 no meio de uma demo). O evento `trace_url` sai no stream logo após `connected`, e o Chat renderiza o badge "Ver trace no Langfuse" no cabeçalho assim que chega — antes mesmo da resposta terminar.
+
+## Relatórios e evidências — v3.1.0
+
+Todas as rotas de análise/chat da UI compartilham o runtime MCP real (`initialize`, `list_tools`, `call_tool` via stdio). A inferência usa a API de mensagens do modelo através do gateway configurado; MCP conecta as fontes e ferramentas.
+
+FinOps usa `mode=report`: insights de todos os nós, cluster, Advisor, consultas lentas e custo do tier quando disponível, seguidos de uma resposta do modelo. A coleta e a inferência têm prazos limitados; progresso, cancelamento, erro e conclusão são explícitos. Dados ausentes não viram métricas zero. Aprofundamentos com explain ficam no Assistente.
