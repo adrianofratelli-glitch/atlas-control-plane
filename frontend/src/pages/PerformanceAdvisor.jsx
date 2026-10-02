@@ -55,7 +55,7 @@ export default function PerformanceAdvisor({ clusters, config }) {
       {err && <Banner variant="danger">{err}</Banner>}
       {!data && !err && <Empty icon="⚡" title="Analise os índices de um cluster" hint="Selecione o cluster e clique em Buscar Recomendações para o Performance Advisor sugerir índices com base nos padrões de acesso reais." />}
 
-      {data && suggestions.length === 0 && <Banner variant="success">Nenhuma recomendação para {sel.cluster_name} — cluster saudável!</Banner>}
+      {data && suggestions.length === 0 && <Banner variant="success">Nenhuma recomendação do Advisor para {sel.cluster_name}. Consulte as queries e métricas antes de concluir sobre a saúde do cluster.</Banner>}
       {data && suggestions.length > 0 && (
         <>
           <Banner variant="warning">{suggestions.length} índice(s) sugerido(s) para {sel.cluster_name}</Banner>

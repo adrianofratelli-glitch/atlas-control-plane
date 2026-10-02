@@ -24,6 +24,7 @@ def tool(name, label, description, properties=None, required=(), write=False):
 tool("atlas_cluster", "Consultar cluster", "Configuração e estado atuais do cluster selecionado.")
 tool("atlas_metrics", "Consultar métricas", "Métricas atuais do cluster; janela de cinco minutos.")
 tool("atlas_series", "Consultar histórico de métricas", "Séries reais de métricas das últimas 24 horas.")
+tool("atlas_cluster_insights", "Analisar todos os nós", "CPU média do cluster, p95 por nó, cobertura 24h, carga recente e desequilíbrio. Consulte antes de recomendar escala ou economia; combine com Advisor, slow queries e explain.")
 tool("atlas_alerts", "Consultar alertas", "Alertas abertos do projeto selecionado; informe o escopo do projeto.")
 tool("atlas_indexes", "Buscar índices recomendados", "Performance Advisor atualizado, sem cache do chat. Consulte next_offset até has_more=false para listar todas as recomendações.", PAGE)
 tool("atlas_slow_queries", "Analisar consultas lentas", "Slow queries reais. Paginação com next_offset; use para propor índices quando o Advisor retornar lista vazia.", PAGE)
@@ -36,7 +37,7 @@ tool("mongo_search_indexes", "Listar índices Search e Vector", "Índices Atlas 
 tool("mongo_find", "Consultar documentos", "Consulta paginada com filtro, projeção e ordenação. Use Extended JSON para ObjectId e datas; descubra os campos antes.", {"namespace": NS, "filter": DOC, "projection": DOC, "sort": DOC, **PAGE}, ("namespace",))
 tool("mongo_count", "Contar documentos", "Contagem exata de documentos que atendem ao filtro, com prazo de execução.", {"namespace": NS, "filter": DOC}, ("namespace",))
 tool("mongo_aggregate", "Analisar dados", "Agregação somente leitura, inclusive Search/Vector Search. Resultado paginado; não aceita $out, $merge nem JavaScript.", {"namespace": NS, "pipeline": {"type": "array", "items": DOC, "maxItems": 30}, **PAGE}, ("namespace", "pipeline"))
-tool("mongo_explain", "Explicar consulta", "Plano e estatísticas reais de um filtro, limitado a 100 resultados.", {"namespace": NS, "filter": DOC}, ("namespace",))
+tool("mongo_explain", "Explicar consulta", "Plano e estatísticas reais de find, com sort e limit opcionais (até 100). Reproduza o filtro, sort e limit da slow query; filtro isolado não valida índice para ordenação.", {"namespace": NS, "filter": DOC, "sort": {"type": "object", "additionalProperties": {"enum": [1, -1]}, "maxProperties": 10}, "limit": {"type": "integer", "minimum": 1, "maximum": 100}}, ("namespace",))
 tool("mongo_insert", "Inserir documentos", "Preparar inserção de até 100 documentos. Aprovação no cartão obrigatória; não executa imediatamente.", {"namespace": NS, "documents": {"type": "array", "items": DOC, "minItems": 1, "maxItems": 100}}, ("namespace", "documents"), True)
 tool("mongo_update", "Atualizar documentos", "Preparar atualização de até 100 documentos por filtro não vazio. Congela IDs e mostra contagem. Aprovação obrigatória.", {"namespace": NS, "filter": DOC, "update": DOC}, ("namespace", "filter", "update"), True)
 tool("mongo_delete", "Excluir documentos", "Preparar exclusão de até 100 documentos por filtro não vazio. Congela IDs e mostra contagem. Aprovação obrigatória.", {"namespace": NS, "filter": DOC}, ("namespace", "filter"), True)
@@ -165,6 +166,8 @@ class ClusterTools:
                 return {"scope": "project", "alerts": client.get_open_alerts(self.project_id)}
             if name == "atlas_cost":
                 return {"estimate": client.estimate_cost(args["tier"]), "basis": "Tabela AWS us-east-1, sem descontos e extras"}
+            if name == "atlas_cluster_insights":
+                return api.collect_insights(client, self.project_id, self.cluster_name)
             pid = api._primary_or_404(client, self.project_id, self.cluster_name)
             method = {"atlas_metrics": "get_measurements", "atlas_series": "get_measurements_series", "atlas_indexes": "get_suggested_indexes", "atlas_slow_queries": "get_slow_queries"}[name]
             data = getattr(client, method)(self.project_id, pid)
@@ -174,7 +177,17 @@ class ClusterTools:
                 key = "suggestedIndexes" if name == "atlas_indexes" else "slowQueries"
                 if key not in data:
                     raise ValueError("Atlas não retornou a lista esperada; não é possível afirmar que está vazia.")
-                return {**page(data[key], args), "source": "Atlas Admin API", "fetched_at": datetime.now(timezone.utc).isoformat()}
+                items = data[key]
+                def timestamp(item):
+                    try:
+                        return json.loads(item.get("line", "{}")).get("t", {}).get("$date", "")
+                    except (ValueError, AttributeError, TypeError):
+                        return ""
+                if name == "atlas_slow_queries":
+                    items = sorted(items, key=timestamp, reverse=True)
+                return {**page(items, args), "source": "Atlas Admin API",
+                        "order": "newest_first" if name == "atlas_slow_queries" else "atlas_order",
+                        "fetched_at": datetime.now(timezone.utc).isoformat()}
             return data
         mc = self.mongo()
         if name == "mongo_databases":
@@ -203,7 +216,10 @@ class ClusterTools:
         if name == "mongo_count":
             return {"count": coll.count_documents(filt, maxTimeMS=10000)}
         if name == "mongo_explain":
-            return mc[db].command("explain", {"find": collection, "filter": filt, "limit": 100, "maxTimeMS": 10000}, verbosity="executionStats")
+            query = {"find": collection, "filter": filt, "limit": args.get("limit", 100), "maxTimeMS": 10000}
+            if args.get("sort"):
+                query["sort"] = args["sort"]
+            return mc[db].command("explain", query, verbosity="executionStats")
         offset, limit = args.get("offset", 0), args.get("limit", 20)
         if name == "mongo_find":
             cursor = coll.find(filt, args.get("projection")).sort(list(args.get("sort", {"_id": 1}).items())).skip(offset).limit(limit + 1).max_time_ms(10000)

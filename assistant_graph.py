@@ -57,6 +57,7 @@ async def n_call_model(state: LoopState, config) -> dict:
     iter_model = os.getenv("CLAUDE_MODEL", MODEL)
     iter_text = ""
     iter_t0 = time.perf_counter()
+    await emit({"type": "model_start", "label": "Claude analisando contexto e ferramentas", "round": iteration})
     async with client.messages.stream(model=iter_model, max_tokens=4096,
                                        system=state["system"], messages=history, tools=ctx["tools"]) as stream:
         async for text in stream.text_stream:
@@ -64,6 +65,8 @@ async def n_call_model(state: LoopState, config) -> dict:
             await emit({"type": "text", "text": text})
         message = await stream.get_final_message()
         _track_usage(getattr(message, "usage", None))
+    await emit({"type": "model_end", "label": "Rodada do modelo concluída", "round": iteration,
+                "duration_ms": int((time.perf_counter() - iter_t0) * 1000)})
     usage = getattr(message, "usage", None)
     tracing.log_generation(
         lf_trace, name="assistant.reasoning", model=iter_model,
@@ -114,7 +117,7 @@ async def n_call_tools(state: LoopState, config) -> dict:
             return {"calls": calls, "outcome": {
                 "type": "error", "message": "Limite de 40 consultas por rodada atingido. Peça para continuar a análise."}}
         label = TOOLS.get(call["name"], {}).get("label", call["name"])
-        await emit({"type": "tool_start", "id": call["id"], "label": label})
+        await emit({"type": "tool_start", "id": call["id"], "name": call["name"], "label": label})
         tool_t0 = time.perf_counter()
         response = await mcp.call_tool(call["name"], call["input"])
         content = "\n".join(b.text for b in response.content if b.type == "text")
@@ -135,7 +138,7 @@ async def n_call_tools(state: LoopState, config) -> dict:
         tracing.log_span(
             lf_trace, name=f"tool.{call['name']}", input_data=call["input"], output_data=data,
             metadata={"is_error": response.isError, "latency_ms": int((time.perf_counter() - tool_t0) * 1000)})
-        await emit({"type": "tool_end", "id": call["id"], "label": label, "ok": not response.isError,
+        await emit({"type": "tool_end", "id": call["id"], "name": call["name"], "label": label, "ok": not response.isError,
                     "message": data.get("error") if response.isError else
                     "Consulta concluída" if not TOOLS.get(call["name"], {}).get("write") else "Ação preparada; aguardando aprovação"})
         results.append({"type": "tool_result", "tool_use_id": call["id"], "content": content, "is_error": response.isError})

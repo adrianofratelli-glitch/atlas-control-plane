@@ -31,6 +31,7 @@ class Message(BaseModel):
 class AssistantBody(SessionBody):
     messages: list[Message] = Field(min_length=1, max_length=16)
     conversation_id: str | None = None
+    mode: Literal["chat", "report"] = "chat"
 
 
 class DecisionBody(SessionBody):
@@ -68,7 +69,8 @@ async def assistant(body: AssistantBody):
         raise HTTPException(422, "Informe projeto e cluster juntos.")
     conv_id = None
     try:
-        conv_id = await asyncio.to_thread(save_user, body)
+        if body.mode == "chat":
+            conv_id = await asyncio.wait_for(asyncio.to_thread(save_user, body), timeout=8)
     except HTTPException:
         raise
     except Exception:
@@ -76,17 +78,25 @@ async def assistant(body: AssistantBody):
 
     async def events():
         text = []
+        completed = False
         if conv_id:
             yield encode({"type": "conversation", "id": conv_id})
         try:
             async with asyncio.timeout(240):
-                async with aclosing(run_assistant([m.model_dump() for m in body.messages], body.project_id, body.cluster_name, body.session_id)) as stream:
+                async with aclosing(run_assistant([m.model_dump() for m in body.messages], body.project_id, body.cluster_name, body.session_id, mode=body.mode)) as stream:
                     async for event in stream:
                         if event["type"] == "text":
                             text.append(event["text"])
+                        completed = completed or event["type"] == "done"
                         yield encode(event)
+            if not completed:
+                # Logical model limits emit an error; still terminate NDJSON cleanly.
+                yield encode({"type": "done"})
         except asyncio.CancelledError:
             raise
+        except TimeoutError:
+            yield encode({"type": "error", "message": "Prazo de análise excedido. As evidências disponíveis continuam nos painéis; tente novamente."})
+            yield encode({"type": "done"})
         except Exception:
             logger.warning("Rodada do assistente interrompida (MCP/modelo indisponível ou prazo excedido).")
             yield encode({"type": "error", "message": "Não foi possível concluir a conversa. Verifique a conexão MCP e a configuração do modelo. Ações pendentes podem ser recuperadas em Atualizar ações."})

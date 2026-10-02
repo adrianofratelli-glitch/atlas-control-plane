@@ -26,14 +26,15 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
+from cluster_insights import collect as collect_insights
+from metrics_cache import cache as metrics_cache
 import observability
 from atlas_client import (
     AtlasClient, create_index_direct,
     DEDICATED_TIERS, NVME_TIERS, TIER_PRICING_USD,
 )
 from ai_agent import (
-    analyze_cluster_stream, stream_chat,
-    build_chat_system_prompt, generate_pdf_report, friendly_api_error,
+    generate_pdf_report, friendly_api_error,
 )
 
 load_dotenv()
@@ -123,7 +124,7 @@ def get_client() -> AtlasClient:
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
-app = FastAPI(title="Torre Atlas Control Plane API", version="3.0")
+app = FastAPI(title="Torre Atlas Control Plane API", version="3.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -310,8 +311,12 @@ def alerts(project_ids: str = Query("", description="IDs separados por vírgula"
 @app.get("/api/invoice")
 def invoice():
     client = get_client()
+    if not client.org_id:
+        return {"amount_usd": None, "status": "unavailable", "reason": "ATLAS_ORG_ID ausente; estimativas não são fatura."}
     inv = client.get_pending_invoice()
-    return {"amount_usd": inv.get("amountBilledCents", 0) / 100 if inv else 0}
+    cents = inv.get("amountBilledCents") if inv else None
+    return {"amount_usd": cents / 100 if cents is not None else None,
+            "status": "available" if cents is not None else "unavailable"}
 
 
 # ── Performance Advisor / Profiler / Metrics ──────────────────────────────────
@@ -469,26 +474,13 @@ def _finops_sync():
             tier = rc["electableSpecs"]["instanceSize"]
         except (KeyError, IndexError, TypeError):
             tier = "Free/Shared"
-        cpu = None
-        if not c.get("paused") and tier != "Free/Shared":
-            pid = client.get_primary(proj["id"], c["name"])
-            stats = _cpu_24h_stats(client, proj["id"], pid) if pid else None
-            cpu = stats["avg"] if stats else None
+        insight = collect_insights(client, proj["id"], c["name"], tier)
         cost = AtlasClient.estimate_cost(tier, USD_BRL)
-        verdict, color, savings = "sem dados", "muted", 0
-        if cpu is not None:
-            down = _tier_down(tier)
-            if cpu < 15 and down:
-                # Real saving is the delta to the next tier down — not the whole bill
-                savings = cost["usd"] - AtlasClient.estimate_cost(down, USD_BRL)["usd"]
-                verdict, color = f"subutilizado — avaliar {down}", "yellow"
-            elif cpu > 75:
-                verdict, color = "saturado — avaliar scale up", "red"
-            else:
-                verdict, color = "saudável — bom uso do tier", "green"
-        return {"project": proj["name"], "cluster": c["name"], "tier": tier,
-                "cpu": cpu, "cost_usd": cost["usd"], "cost_brl": cost["brl"],
-                "verdict": verdict, "color": color, "savings_usd": savings}
+        down = _tier_down(tier)
+        savings = max(0, cost["usd"] - AtlasClient.estimate_cost(down, USD_BRL)["usd"]) if insight["action"] == "down" and down else 0
+        return {**insight, "project_id": proj["id"], "project": proj["name"],
+                "cluster": c["name"], "tier": tier, "cost_usd": cost["usd"], "cost_brl": cost["brl"],
+                "savings_usd": savings, "target_tier": down if savings else None}
 
     # Each cluster needs 3-4 Atlas API calls — sequential would take minutes on a real org
     with ThreadPoolExecutor(max_workers=8) as ex:
@@ -501,10 +493,33 @@ def _finops_sync():
 @app.get("/api/cluster/{project_id}/{cluster_name}/scaling")
 def scaling(project_id: str, cluster_name: str, tier: str):
     client = get_client()
-    pid = client.get_primary(project_id, cluster_name)
-    meas = client.get_measurements(project_id, pid) if pid else {}
-    cpu24 = _cpu_24h_stats(client, project_id, pid) if pid else None
-    return AtlasClient.recommend_scaling(meas, tier, cpu24)
+    insight = metrics_cache.get((_client_credentials_key(), "scaling", project_id, cluster_name, tier), 60,
+        lambda: collect_insights(client, project_id, cluster_name, tier))
+    # Keep the existing UI contract, but use worst-node CPU and avoid false OK.
+    snapshot = next((n.get("snapshot", {}) for n in insight["nodes"] if n.get("role") == "REPLICA_PRIMARY"), {})
+    metrics = {**snapshot, "cpu_p95_24h": insight["worst_node_p95"], "cpu_avg_24h": insight["cpu"],
+               "conn_pct": round(snapshot.get("connections", 0) / AtlasClient.TIER_CONN_LIMIT.get(tier, 1500) * 100, 1)}
+    return {**insight, "headline": insight["verdict"],
+            "severity": "high" if insight["action"] == "up" else "med" if insight["action"] in ("unknown", "investigate") else "low",
+            "metrics": metrics if snapshot and "error" not in snapshot else None}
+
+
+
+@app.get("/api/cluster/{project_id}/{cluster_name}/live")
+def live_metrics(project_id: str, cluster_name: str, tier: str):
+    client = get_client()
+    def fetch():
+        processes = client.get_cluster_processes(project_id, cluster_name)
+        def node(p):
+            pid = p.get("id") or f"{p['hostname']}:{p['port']}"
+            return {"alias": p.get("userAlias") or p["hostname"], "role": p.get("typeName"),
+                    "snapshot": client.get_measurements(project_id, pid)}
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            nodes = list(pool.map(node, processes))
+        from datetime import datetime, timezone
+        return {"nodes": nodes, "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "source": "Atlas Admin API", "connection_limit": AtlasClient.TIER_CONN_LIMIT.get(tier), "granularity_seconds": 60, "refresh_seconds": 5}
+    return metrics_cache.get((_client_credentials_key(), "live", project_id, cluster_name, tier), 1, fetch)
 
 
 # ── Scale / Index (actions) ───────────────────────────────────────────────────
@@ -660,23 +675,30 @@ class AnalyzeBody(BaseModel):
     project_id: str = Field(..., min_length=1, max_length=128)
     cluster_name: str = Field(..., min_length=1, max_length=128)
 
-@app.post("/api/analyze")
-def analyze(body: AnalyzeBody):
-    client = get_client()
-    full_c = client.get_cluster(body.project_id, body.cluster_name)
-    pid = client.get_primary(body.project_id, body.cluster_name)
-    pa = client.get_suggested_indexes(body.project_id, pid) if pid else {}
-    sq = client.get_slow_queries(body.project_id, pid) if pid else {}
-    meas = client.get_measurements(body.project_id, pid) if pid else {}
-    cpu24 = _cpu_24h_stats(client, body.project_id, pid) if pid else None
+async def _mcp_text_response(messages, project_id, cluster_name, *, mode="chat", conversation_id=None):
+    """Compatibility text streams use the same MCP runtime as the assistant."""
+    from assistant_api import AssistantBody, assistant
+    body = AssistantBody(session_id=uuid4().hex, project_id=project_id or "",
+                         cluster_name=cluster_name or "", messages=messages,
+                         conversation_id=conversation_id, mode=mode)
+    response = await assistant(body)
+    async def text():
+        async for frame in response.body_iterator:
+            if isinstance(frame, bytes):
+                frame = frame.decode()
+            for line in frame.splitlines():
+                event = json.loads(line)
+                if event["type"] == "text":
+                    yield event["text"]
+                elif event["type"] == "error":
+                    yield "\n\n" + event["message"]
+    return StreamingResponse(text(), media_type="text/plain", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
-    def gen():
-        try:
-            for chunk in analyze_cluster_stream(full_c, pa, sq, meas, cpu24):
-                yield chunk
-        except Exception as e:
-            yield _with_ai_recovery(friendly_api_error(e))
-    return StreamingResponse(gen(), media_type="text/plain")
+
+@app.post("/api/analyze")
+async def analyze(body: AnalyzeBody):
+    return await _mcp_text_response([{"role": "user", "content": "Gere relatório técnico de performance e capacidade com evidências MCP, distinguindo fatos, hipóteses e dados ausentes."}],
+                                    body.project_id, body.cluster_name, mode="report")
 
 
 class ChatMessage(BaseModel):
@@ -753,52 +775,12 @@ def _chat_cluster_snapshot(client: AtlasClient, project_id: str, cluster_name: s
 
 
 @app.post("/api/chat")
-def chat(body: ChatBody):
+async def chat(body: ChatBody):
     messages = [message.model_dump() for message in body.messages]
-    user_msg = messages[-1]["content"]
-    if _is_obviously_out_of_scope(user_msg):
+    if _is_obviously_out_of_scope(messages[-1]["content"]):
         return StreamingResponse(iter([_scope_redirect()]), media_type="text/plain")
-
-    # There is ALWAYS a system prompt (MongoDB Atlas anchor) — without it the model answers generically.
-    system = build_chat_system_prompt()
-    if body.project_id and body.cluster_name:
-        client = get_client()
-        full_c, pa, sq, meas = _chat_cluster_snapshot(client, body.project_id, body.cluster_name)
-        system = build_chat_system_prompt(full_c, pa, sq, meas)
-
-    # Atlas persistence (best-effort — chat works even without MONGODB_URI)
-    uri = os.getenv("MONGODB_URI", "")
-    conv_id = body.conversation_id
-    if uri and user_msg:
-        try:
-            from chat_memory import new_conversation, add_message
-            _ensure_chat_db(uri)
-            if not conv_id:
-                conv_id = new_conversation(uri, body.cluster_name or "")
-            add_message(uri, conv_id, "user", user_msg)
-        except Exception:
-            logger.exception("chat history write (user turn) failed")
-            conv_id = None
-
-    def gen():
-        acc = []
-        try:
-            for chunk in stream_chat(messages, system):
-                acc.append(chunk)
-                yield chunk
-        except Exception as e:
-            err = _with_ai_recovery(friendly_api_error(e))
-            acc.append(err)
-            yield err
-        if uri and conv_id:
-            try:
-                from chat_memory import add_message
-                add_message(uri, conv_id, "assistant", "".join(acc))
-            except Exception:
-                logger.exception("chat history write (assistant turn) failed")
-
-    headers = {"X-Conversation-Id": conv_id} if conv_id else {}
-    return StreamingResponse(gen(), media_type="text/plain", headers=headers)
+    return await _mcp_text_response(messages, body.project_id, body.cluster_name,
+                                    conversation_id=body.conversation_id)
 
 
 # ── Analysis PDF report (MongoDB branding, Markdown fallback) ─────────────────

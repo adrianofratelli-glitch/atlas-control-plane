@@ -206,10 +206,7 @@ class AtlasClient:
         Needed because name matching fails for clusters with generic names
         like 'MongoDB' (which appears in every .mongodb.net hostname).
 
-        Strategy:
-        1. Fetch the cluster to check whether it is PAUSED (no processes)
-        2. Extract the cluster's unique hash from connectionStrings
-        3. Use that hash to find the exact primary in the process list
+        Resolve processes through exact cluster aliases; shared suffixes are not identity.
 
         Cached for 60s per (project_id, cluster_name) — primaries change on
         election only, and every dashboard endpoint re-resolves it otherwise.
@@ -222,55 +219,30 @@ class AtlasClient:
         self._cache_put(self._primary_cache, cache_key, result, self._PRIMARY_TTL)
         return result
 
-    def _get_primary_uncached(self, project_id: str, cluster_name: str) -> Optional[str]:
-        import re as _re
-        try:
-            cluster = self.get_cluster(project_id, cluster_name)
-        except Exception:
-            logger.exception("get_cluster failed project_id=%s cluster=%s", project_id, cluster_name)
-            cluster = {}
-
-        # A paused cluster has no active processes
+    def get_cluster_processes(self, project_id: str, cluster_name: str) -> list:
+        """Match Atlas aliases, never a shared DNS suffix or arbitrary primary."""
+        import re
+        from urllib.parse import urlsplit
+        cluster = self.get_cluster(project_id, cluster_name)
         if cluster.get("paused") or cluster.get("stateName") in ("PAUSED", "DELETING", "CREATING"):
-            return None
+            return []
+        srv = (cluster.get("connectionStrings") or {}).get("standardSrv") or cluster.get("srvAddress", "")
+        host = urlsplit(srv).hostname or ""
+        domain = host.partition(".")[2]
+        if not domain:
+            return []
+        pattern = re.compile(r"^" + re.escape(cluster_name.lower()) +
+                             r"-shard-\d+-\d+\." + re.escape(domain.lower()) + r"$")
+        processes = self.get_processes(project_id)
+        return [p for p in processes
+                if p.get("typeName") in ("REPLICA_PRIMARY", "REPLICA_SECONDARY")
+                and any(pattern.fullmatch(p.get(key, "").lower())
+                        for key in ("userAlias", "hostname"))]
 
-        try:
-            procs = self.get_processes(project_id)
-        except Exception:
-            logger.exception("get_processes failed project_id=%s", project_id)
-            return None
-        if not procs:
-            return None
-
-        primaries = [p for p in procs if p.get("typeName") == "REPLICA_PRIMARY"]
-        if not primaries:
-            return f"{procs[0]['hostname']}:{procs[0]['port']}"
-
-        # Try to extract the cluster's unique hash via srvAddress or connectionStrings
-        conn = cluster.get("connectionStrings", {})
-        srv  = conn.get("standardSrv", "") or cluster.get("srvAddress", "")
-        # srvAddress e.g. "mongodb+srv://inter.xxxxx.mongodb.net"
-        # The "xxxxx" hash is unique per cluster
-        hash_match = _re.search(r'\.([a-z0-9]+)\.mongodb\.net', srv.lower())
-        if hash_match:
-            cluster_hash = hash_match.group(1)
-            for p in primaries:
-                if cluster_hash in p.get("hostname", "").lower():
-                    return f"{p['hostname']}:{p['port']}"
-
-        # Fallback: startswith on the cluster name (works for non-generic names)
-        cluster_lower = cluster_name.lower()
-        _GENERIC = {"mongodb", "atlas", "cluster", "replica", "shard"}
-        if cluster_lower not in _GENERIC:
-            for p in primaries:
-                if p.get("hostname", "").lower().startswith(cluster_lower):
-                    return f"{p['hostname']}:{p['port']}"
-            for p in primaries:
-                if cluster_lower in p.get("hostname", "").lower():
-                    return f"{p['hostname']}:{p['port']}"
-
-        # Last resort fallback: first available primary
-        return f"{primaries[0]['hostname']}:{primaries[0]['port']}"
+    def _get_primary_uncached(self, project_id: str, cluster_name: str) -> Optional[str]:
+        processes = self.get_cluster_processes(project_id, cluster_name)
+        primary = next((p for p in processes if p.get("typeName") == "REPLICA_PRIMARY"), None)
+        return (primary.get("id") or f"{primary['hostname']}:{primary['port']}") if primary else None
 
     # ── Disk / Storage measurements (endpoint /disks/{partition}) ─────────
     def _disk_metrics(self, project_id: str, process_id: str) -> dict:
@@ -359,11 +331,13 @@ class AtlasClient:
             return None
 
         result = {}
+        observed = {}
         for m in data.get("measurements", []):
             name = m.get("name", "")
             val  = _last_nonnull(m.get("dataPoints", []))
             if val is not None:
                 result[name] = round(val, 2)
+                observed[name] = next((p.get("timestamp") for p in reversed(m.get("dataPoints", [])) if p.get("value") is not None), None)
 
         # CPU: prefer normalized (0–100%), fall back to non-normalized if absent
         cpu_user = result.get("SYSTEM_NORMALIZED_CPU_USER")
@@ -399,12 +373,16 @@ class AtlasClient:
         formatted["net_in_mb"]        = round(result.get("NETWORK_BYTES_IN",  0) / 1_048_576, 2)
         formatted["net_out_mb"]       = round(result.get("NETWORK_BYTES_OUT", 0) / 1_048_576, 2)
         formatted["query_targeting"]  = result.get("QUERY_TARGETING_SCANNED_OBJECTS_PER_RETURNED", 0)
+        formatted["_disk_available"]  = all(k in disk for k in ("space_pct", "iops_read", "iops_write"))
+        formatted["_memory_available"] = bool(mem_used + mem_avail)
+        formatted["cpu_observed_at"] = observed.get("SYSTEM_NORMALIZED_CPU_USER")
         formatted["_raw"]             = result
         return formatted
 
     # ── Hardware Measurements (time series) ───────────────────────────────
     def get_measurements_series(self, project_id: str, process_id: str,
-                                period: str = "P1D", granularity: str = "PT1H") -> dict:
+                                period: str = "P1D", granularity: str = "PT1H",
+                                start: str = None, end: str = None) -> dict:
         """
         Fetch a time series of metrics for charts (default: last 24h, 1 point/h).
         Returns a plot-ready structure: timestamps + aligned series.
@@ -420,42 +398,34 @@ class AtlasClient:
         try:
             data = self._get(
                 f"/groups/{project_id}/processes/{process_id}/measurements",
-                params={"granularity": granularity, "period": period, "m": METRICS},
+                params={"granularity": granularity, "m": METRICS,
+                        **({"start": start, "end": end} if start and end else {"period": period})},
             )
         except Exception as e:
             logger.exception("measurements series fetch failed project_id=%s process_id=%s", project_id, process_id)
             return {"error": str(e)}
 
-        raw = {}
-        timestamps = []
-        for m in data.get("measurements", []):
-            name = m.get("name", "")
-            pts  = m.get("dataPoints", [])
-            raw[name] = [p.get("value") for p in pts]
-            if not timestamps and pts:
-                timestamps = [p.get("timestamp") for p in pts]
+        # Align by timestamp and preserve gaps: no telemetry is not zero load.
+        raw = {m.get("name"): {p["timestamp"]: p.get("value")
+               for p in m.get("dataPoints", []) if p.get("timestamp")}
+               for m in data.get("measurements", [])}
+        timestamps = sorted({t for values in raw.values() for t in values})
 
-        def _combine(a, b):
-            la, lb = raw.get(a, []), raw.get(b, [])
-            n = max(len(la), len(lb))
+        def combine(a, b):
             out = []
-            for i in range(n):
-                va = la[i] if i < len(la) and la[i] is not None else 0
-                vb = lb[i] if i < len(lb) and lb[i] is not None else 0
-                out.append(round(va + vb, 1))
+            for t in timestamps:
+                va, vb = raw.get(a, {}).get(t), raw.get(b, {}).get(t)
+                out.append(round(va + vb, 1) if va is not None and vb is not None else None)
             return out
 
-        def _clean(name):
-            return [round(v, 1) if v is not None else 0 for v in raw.get(name, [])]
+        def clean(name):
+            return [round(raw[name][t], 1) if raw.get(name, {}).get(t) is not None else None
+                    for t in timestamps]
 
-        return {
-            "timestamps":  timestamps,
-            "cpu":         _combine("SYSTEM_NORMALIZED_CPU_USER", "SYSTEM_NORMALIZED_CPU_KERNEL"),
-            "ops_query":   _clean("OPCOUNTER_QUERY"),
-            "ops_insert":  _clean("OPCOUNTER_INSERT"),
-            "ops_update":  _clean("OPCOUNTER_UPDATE"),
-            "connections": _clean("CONNECTIONS"),
-        }
+        return {"timestamps": timestamps,
+                "cpu": combine("SYSTEM_NORMALIZED_CPU_USER", "SYSTEM_NORMALIZED_CPU_KERNEL"),
+                "ops_query": clean("OPCOUNTER_QUERY"), "ops_insert": clean("OPCOUNTER_INSERT"),
+                "ops_update": clean("OPCOUNTER_UPDATE"), "connections": clean("CONNECTIONS")}
 
     # ── Scaling recommendation (heuristic, based on real metrics) ─────────
     # Approximate connection limit per tier (Atlas docs)

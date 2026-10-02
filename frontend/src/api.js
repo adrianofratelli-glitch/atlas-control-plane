@@ -20,6 +20,7 @@ export const getSlow        = (pid, name) => http.get(`${c(pid, name)}/slow`).th
 export const getMeasurements= (pid, name) => http.get(`${c(pid, name)}/measurements`).then(r => r.data)
 export const getSeries      = (pid, name) => http.get(`${c(pid, name)}/series`).then(r => r.data)
 export const getHealth      = (pid, name, status, mv) => http.get(`${c(pid, name)}/health`, { params: { status, mongo_version: mv } }).then(r => r.data)
+export const getLiveMetrics = (pid, name, tier) => http.get(`${c(pid, name)}/live`, { params: { tier } }).then(r => r.data)
 export const getScaling     = (pid, name, tier) => http.get(`${c(pid, name)}/scaling`, { params: { tier } }).then(r => r.data)
 export const scaleCluster   = (pid, name, newTier) => http.post(`${c(pid, name)}/scale`, { new_tier: newTier }).then(r => r.data)
 export const createIndex    = (namespace, indexKeys, project_id, cluster_name) => http.post('/index', { namespace, index_keys: indexKeys, project_id, cluster_name }).then(r => r.data)
@@ -65,8 +66,12 @@ async function* streamPost(url, payload, onResponse) {
 export const streamChat = (messages, project_id, cluster_name, conversation_id, onResponse) =>
   streamPost('/api/chat', { messages, project_id, cluster_name, conversation_id }, onResponse)
 
-export const streamAnalyze = (project_id, cluster_name) =>
-  streamPost('/api/analyze', { project_id, cluster_name })
+export async function* streamAnalyze(project_id, cluster_name) {
+  for await (const event of streamAssistant({ session_id: crypto.randomUUID(), project_id, cluster_name, mode: 'report', messages: [{ role: 'user', content: 'Relatório técnico de performance com evidências MCP. Destaque Advisor, consultas recentes, capacidade e limitações; não prepare ações.' }] })) {
+    if (event.type === 'text') yield event.text
+    if (event.type === 'error') throw new Error(event.message)
+  }
+}
 
 // Downloads the analysis report as PDF (or Markdown, if fpdf2 is unavailable)
 export async function downloadReport(cluster_name, analysis, health_score = null, health_issues = null) {
@@ -99,5 +104,7 @@ export async function* streamAssistant(payload, signal) {
     try { detail = (await res.json()).detail || detail } catch { /* invalid JSON */ }
     throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail))
   }
-  yield* readAssistantStream(res.body)
+  for await (const event of readAssistantStream(res.body)) {
+    yield event
+  }
 }

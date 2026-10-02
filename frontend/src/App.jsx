@@ -26,6 +26,7 @@ const NAV = [
 
 export default function App() {
   const [active, setActive] = useState('overview')
+  const [finopsMounted, setFinopsMounted] = useState(false)
   const [config, setConfig] = useState(null)
   const [clusters, setClusters] = useState([])
   const [error, setError] = useState(null)
@@ -53,7 +54,7 @@ export default function App() {
         </div>
         {NAV.map((n, i) => n.section
           ? <div key={i} className="sidenav-section">{n.section}</div>
-          : <button key={n.id} className={`sidenav-item ${active === n.id ? 'active' : ''}`} aria-current={active === n.id ? 'page' : undefined} onClick={() => setActive(n.id)}>
+          : <button key={n.id} className={`sidenav-item ${active === n.id ? 'active' : ''}`} aria-current={active === n.id ? 'page' : undefined} onClick={() => { setActive(n.id); if (n.id === 'finops') setFinopsMounted(true) }}>
               <Icon glyph={n.icon} size="large" role="presentation" />{n.label}
             </button>
         )}
@@ -72,9 +73,10 @@ export default function App() {
           <ClusterContext clusters={clusters}>
           <div className="page-enter" key={active}>
             <Suspense fallback={<Body style={{ color: 'var(--text-muted)' }}>Carregando módulo…</Body>}>
-              {active !== 'chat' && <Current clusters={clusters} config={config} />}
+              {!['chat', 'finops'].includes(active) && <Current clusters={clusters} config={config} />}
             </Suspense>
           </div>
+          {finopsMounted && <div hidden={active !== 'finops'}><Suspense fallback={<Body>Carregando FinOps…</Body>}><FinOps clusters={clusters} config={config} /></Suspense></div>}
           <div hidden={active !== 'chat'}>
             <Suspense fallback={<Body>Carregando Assistente…</Body>}>
               <Chat clusters={clusters} config={config} active={active === 'chat'} />

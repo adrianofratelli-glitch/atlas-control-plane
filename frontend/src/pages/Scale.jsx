@@ -1,18 +1,19 @@
 import { useClusterSelection } from '../cluster-context.jsx'
 import { useState, useEffect } from 'react'
-import { H1, H3, Body } from '@leafygreen-ui/typography'
+import { H1, Body } from '@leafygreen-ui/typography'
 import Button from '@leafygreen-ui/button'
 import Banner from '@leafygreen-ui/banner'
 import Badge from '@leafygreen-ui/badge'
 import Card from '@leafygreen-ui/card'
-import { KpiGrid, Kpi, Section, MiniChart, Empty } from '../components.jsx'
-import { getScaling, getSeries, scaleCluster } from '../api.js'
+import { KpiGrid, Kpi, Section, Empty } from '../components.jsx'
+import { getScaling, getLiveMetrics, scaleCluster } from '../api.js'
 import { ClusterPicker } from './_picker.jsx'
 
 export default function Scale({ clusters, config }) {
   const [sel, setSel] = useClusterSelection()
   const [rec, setRec] = useState(null)
-  const [series, setSeries] = useState(null)
+  const [live, setLive] = useState(null)
+  const [liveError, setLiveError] = useState('')
   const [newTier, setNewTier] = useState(sel?.tier)
   const [msg, setMsg] = useState(null)
   const [confirm, setConfirm] = useState(false)
@@ -20,12 +21,32 @@ export default function Scale({ clusters, config }) {
 
   useEffect(() => {
     if (!sel) return
-    setRec(null); setSeries(null); setNewTier(sel.tier); setMsg(null); setConfirm(false); setLoading(true)
-    Promise.all([
-      getScaling(sel.project_id, sel.cluster_name, sel.tier).then(setRec).catch(() => {}),
-      getSeries(sel.project_id, sel.cluster_name).then(setSeries).catch(() => {}),
-    ]).finally(() => setLoading(false))
-  }, [sel])
+    let cancelled = false, liveTimer, recTimer, livePending = false
+    setRec(null); setLive(null); setNewTier(sel.tier); setMsg(null); setConfirm(false); setLoading(true); setLiveError('')
+    const pollLive = async () => {
+      if (cancelled || document.hidden || livePending) return
+      livePending = true
+      try {
+        if (!document.hidden) {
+          const result = await getLiveMetrics(sel.project_id, sel.cluster_name, sel.tier)
+          if (!cancelled) { setLive(result); setLiveError('') }
+        }
+      } catch (e) { if (!cancelled) setLiveError(e?.response?.data?.detail || 'Não foi possível atualizar as métricas.') }
+      finally { livePending = false; if (!cancelled) setLoading(false) }
+    }
+    const pollRecommendation = async () => {
+      try { const result = await getScaling(sel.project_id, sel.cluster_name, sel.tier); if (!cancelled) setRec(result) }
+      catch { /* Live metrics still work if historical analysis is unavailable. */ }
+      finally { if (!cancelled) recTimer = setTimeout(pollRecommendation, 60000) }
+    }
+    pollLive(); liveTimer = setInterval(pollLive, 5000); pollRecommendation()
+    return () => { cancelled = true; clearInterval(liveTimer); clearTimeout(recTimer) }
+  }, [sel?.project_id, sel?.cluster_name, sel?.tier])
+
+  const primary = live?.nodes.find(n => n.role === 'REPLICA_PRIMARY')?.snapshot
+  const cpuNodes = live?.nodes.filter(n => n.snapshot?._raw?.SYSTEM_NORMALIZED_CPU_USER != null && n.snapshot?._raw?.SYSTEM_NORMALIZED_CPU_KERNEL != null) || []
+  const cpuMean = cpuNodes.length ? Math.round(cpuNodes.reduce((sum, n) => sum + n.snapshot.cpu_pct, 0) / cpuNodes.length * 10) / 10 : null
+  const hottest = [...cpuNodes].sort((a, b) => b.snapshot.cpu_pct - a.snapshot.cpu_pct)[0]
 
   const usdBrl = config.usd_brl
   const pricing = config.pricing || {}
@@ -75,28 +96,27 @@ export default function Scale({ clusters, config }) {
         </Badge>
         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
           {sel.autoscale_compute
-            ? 'O Atlas já escala este cluster automaticamente — este painel mostra os mesmos sinais que o auto-scaling avalia.'
-            : 'O Atlas oferece auto-scaling nativo de compute e disco — este painel mostra o que ele avaliaria.'}
+            ? 'O Atlas já escala este cluster automaticamente — este painel oferece uma análise independente por nó.'
+            : 'O Atlas oferece auto-scaling nativo de compute e disco — este painel oferece sinais para uma decisão de capacidade.'}
         </span>
       </div>
 
       {/* ── Key metrics that govern scaling: CPU · Memory · Storage ── */}
-      <Section title="Métricas de Scaling" sub="as 3 dimensões que definem o tier" />
-      {loading && <Body style={{ color: 'var(--text-muted)' }}>Analisando métricas do cluster…</Body>}
-      {rec?.metrics && (
+      <Section title="Métricas de Scaling" />
+      {live?.fetched_at && <Body style={{ marginBottom: 12 }}>Última consulta à API: {new Date(live.fetched_at).toLocaleTimeString('pt-BR')} · {live.nodes.length} nó(s).</Body>}
+      {liveError && <Banner variant="warning">{liveError} A última coleta permanece identificada pelo horário.</Banner>}
+      {loading && <Body style={{ color: 'var(--text-muted)' }}>Coletando métricas dos nós…</Body>}
+      {live && !live.nodes.length && <Banner variant="info">Sem processos ativos para este cluster.</Banner>}
+      {live?.nodes.length > 0 && <>
         <div className="responsive-four-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 18 }}>
-          <MetricBar label="CPU" pct={rec.metrics.cpu_p95_24h ?? rec.metrics.cpu_pct}
-                     sub={rec.metrics.cpu_p95_24h != null
-                       ? `p95 24h ${rec.metrics.cpu_p95_24h}% · agora ${rec.metrics.cpu_pct}%`
-                       : `${rec.metrics.cpu_pct}% (agora)`} warn={75} crit={90} />
-          <MetricBar label="Memória" pct={rec.metrics.mem_pct}
-                     sub={`${rec.metrics.memory_used_gb}/${rec.metrics.mem_total_gb} GB · ${rec.metrics.mem_pct}%`} warn={75} crit={90} />
-          <MetricBar label="Storage" pct={rec.metrics.disk_pct}
-                     sub={`${rec.metrics.disk_pct}% do disco`} warn={70} crit={85} />
-          <MetricBar label="Conexões" pct={rec.metrics.conn_pct}
-                     sub={`${rec.metrics.connections} · ${rec.metrics.conn_pct}% do limite`} warn={60} crit={80} />
+          <MetricBar label="CPU média dos nós" pct={cpuMean} sub={hottest ? `Maior CPU: ${hottest.snapshot.cpu_pct}% · ${hottest.alias.split('.')[0]}` : 'CPU indisponível'} warn={75} crit={90} />
+          <MetricBar label="Memória do primary" pct={primary?._memory_available ? primary.mem_pct : null} sub={primary?._memory_available ? `${primary.memory_used_gb}/${primary.mem_total_gb} GB · uso não prova pressão de cache` : 'Indisponível'} />
+          <MetricBar label="Storage do primary" pct={primary?._disk_available ? primary.disk_pct : null} sub="Percentual do disco ocupado" warn={70} crit={85} />
+          <MetricBar label="Conexões do primary" pct={primary?._raw?.CONNECTIONS != null ? primary.connections / (live.connection_limit || 3000) * 100 : null} sub={primary?._raw?.CONNECTIONS != null ? `${primary.connections} conexões` : 'Indisponível'} warn={60} crit={80} />
         </div>
-      )}
+        <div style={{ overflowX: 'auto' }}><table className="mdb"><thead><tr><th>Nó / papel</th><th>CPU atual</th><th>RAM</th><th>Disco</th><th>IOPS R/W</th><th>Conexões</th><th>Amostra CPU</th></tr></thead>
+          <tbody>{live.nodes.map(n => <tr key={n.alias}><td>{n.alias.split('.')[0]}<div>{n.role}</div></td><td>{n.snapshot?._raw?.SYSTEM_NORMALIZED_CPU_USER != null ? `${n.snapshot.cpu_pct}%` : '—'}</td><td>{n.snapshot?._memory_available ? `${n.snapshot.mem_pct}%` : '—'}</td><td>{n.snapshot?._disk_available ? `${n.snapshot.disk_pct}%` : '—'}</td><td>{n.snapshot?._disk_available ? `${n.snapshot.disk_iops_read}/${n.snapshot.disk_iops_write}` : '—'}</td><td>{n.snapshot?._raw?.CONNECTIONS ?? '—'}</td><td>{n.snapshot?.cpu_observed_at ? new Date(n.snapshot.cpu_observed_at).toLocaleTimeString('pt-BR') : '—'}</td></tr>)}</tbody></table></div>
+      </>}
 
       {/* ── Recommendation: why to scale (or not) ── */}
       <Section title="Recomendação Inteligente" sub="baseada em CPU · memória · storage · conexões reais" />
@@ -113,9 +133,6 @@ export default function Scale({ clusters, config }) {
           ✅ Sem necessidade imediata de scaling — você ainda pode simular cenários abaixo para planejar crescimento.
         </Body>
       )}
-
-      <Section title="Carga 24h" badge={sel.cluster_name} />
-      <MiniChart series={series} height={150} />
 
       {/* ── Tier simulator with cost ── */}
       <Section title="Simular Mudança de Tier" />
@@ -176,13 +193,13 @@ export default function Scale({ clusters, config }) {
 // Metric bar with color by severity (green → yellow → red)
 function MetricBar({ label, pct, sub, warn = 75, crit = 90 }) {
   const v = Math.max(0, Math.min(100, pct || 0))
-  const color = v >= crit ? '#F87171' : v >= warn ? '#FACC15' : '#00ED64'
+  const color = pct == null ? 'var(--text-muted)' : v >= crit ? '#F87171' : v >= warn ? '#FACC15' : '#00ED64'
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
                   borderTop: `3px solid ${color}`, borderRadius: '0 0 8px 8px', padding: '14px 16px' }}>
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.2px',
                     color: 'var(--text-muted)', marginBottom: 8 }}>{label}</div>
-      <div className="mono" style={{ fontSize: 22, fontWeight: 700, color, lineHeight: 1 }}>{v}%</div>
+      <div className="mono" style={{ fontSize: 22, fontWeight: 700, color, lineHeight: 1 }}>{pct == null ? '—' : `${Math.round(v * 10) / 10}%`}</div>
       <div style={{ height: 6, background: 'var(--bg-secondary)', borderRadius: 3, overflow: 'hidden', margin: '8px 0 6px' }}>
         <div style={{ width: `${v}%`, height: '100%', background: color }} />
       </div>
