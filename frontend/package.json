@@ -20,7 +20,7 @@
     "@leafygreen-ui/text-input": "^16.2.3",
     "@leafygreen-ui/tokens": "^4.2.2",
     "@leafygreen-ui/typography": "^22.2.4",
-    "axios": "^1.19.0",
+    "axios": "^1.20.0",
     "buffer": "^6.0.3",
     "events": "^3.3.0",
     "process": "^0.11.10",
