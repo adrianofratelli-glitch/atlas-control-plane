@@ -1,16 +1,16 @@
-"""Anthropic tool loop -> real MCP session -> cluster-bound read/proposal tools."""
+"""Claude (via Grove gateway) tool loop -> real MCP session -> cluster-bound read/proposal tools."""
 import asyncio
 from datetime import timedelta
 import json
 import os
 from pathlib import Path
 import sys
-from anthropic import AsyncAnthropic
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from assistant_actions import store
 from assistant_graph import run_loop
 from assistant_tools import TOOLS
+import llm_gateway
 import tracing
 
 SYSTEM = """Você é o Assistente Torre. Ajude uma pessoa de negócio a operar MongoDB Atlas em português, sem exigir que ela conheça MQL.
@@ -30,12 +30,12 @@ def encode(event):
 
 
 async def _produce(messages, project_id, cluster_name, session_id, client=None, emit=None, mode="chat"):
-    """Each turn owns/cleans up its MCP child and Anthropic HTTP client."""
+    """Each turn owns/cleans up its MCP child and Grove gateway client."""
     parameters = StdioServerParameters(command=sys.executable,
         args=[str(Path(__file__).with_name("torre_mcp_server.py")), project_id or "", cluster_name or ""],
         cwd=str(Path(__file__).parent),
         env={k: v for k, v in os.environ.items() if k in {
-            "PATH", "HOME", "LANG", "ATLAS_PUBLIC_KEY", "ATLAS_PRIVATE_KEY", "ATLAS_ORG_ID", "ATLAS_PROJECT_ID", "MONGODB_URI"}})
+            "PATH", "HOME", "LANG", "ATLAS_PUBLIC_KEY", "ATLAS_PRIVATE_KEY", "ATLAS_ORG_ID", "ATLAS_PROJECT_ID", "MONGODB_URI", "MONGODB_DB"}})
     history = [dict(m) for m in messages[-16:]]
     while history and history[0]["role"] != "user":
         history.pop(0)
@@ -45,16 +45,14 @@ async def _produce(messages, project_id, cluster_name, session_id, client=None, 
     system += "\nRegistro de ações desta sessão (estado fornecido pelo servidor): " + json.dumps(outcomes, ensure_ascii=False)
     own_client = client is None
     if own_client:
-        base_url = os.getenv("ANTHROPIC_BASE_URL")
-        key = os.getenv("ANTHROPIC_API_KEY", "")
-        client = AsyncAnthropic(api_key=key, base_url=base_url,
-                                default_headers={"Authorization": f"Bearer {key}"} if base_url else {},
-                                timeout=60, max_retries=0)
+        # Fail closed before spawning MCP: no Grove config means no model call at all.
+        client = llm_gateway.async_client()
     last_user_text = next((m.get("content") for m in reversed(history) if m.get("role") == "user"
                            and isinstance(m.get("content"), str)), "")
+    # The trace is created only AFTER masking: raw user text never reaches Langfuse.
     lf_trace = tracing.start_trace(
         name="torre.turn", user_id=None, session_id=session_id,
-        input_text=last_user_text,
+        input_text=tracing.mask_for_trace(last_user_text),
         metadata={"project_id": project_id, "cluster_name": cluster_name},
     )
     full_response = ""
@@ -81,7 +79,7 @@ async def _produce(messages, project_id, cluster_name, session_id, client=None, 
     finally:
         tracing.finish_trace(lf_trace, output_text=full_response)
         if own_client:
-            await client.close()
+            await client.aclose()
 
 
 async def run_assistant(messages, project_id, cluster_name, session_id, client=None, mode="chat"):

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from assistant_actions import store
 from assistant_tools import ClusterTools, TOOLS, serializable
 from assistant_runtime import run_assistant, encode
+from llm_gateway import GatewayNotConfigured
 
 router = APIRouter(prefix="/api/assistant")
 logger = logging.getLogger("torre.assistant")
@@ -19,8 +20,8 @@ logger = logging.getLogger("torre.assistant")
 class SessionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     session_id: str = Field(min_length=32, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
-    project_id: str = Field(default="", max_length=128)
-    cluster_name: str = Field(default="", max_length=128)
+    project_id: str = Field(default="", max_length=64, pattern=r"^[A-Za-z0-9]*$")
+    cluster_name: str = Field(default="", max_length=64, pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9-]*)?$")
 
 
 class Message(BaseModel):
@@ -94,6 +95,9 @@ async def assistant(body: AssistantBody):
                 yield encode({"type": "done"})
         except asyncio.CancelledError:
             raise
+        except GatewayNotConfigured as exc:
+            yield encode({"type": "error", "message": exc.public_message})
+            yield encode({"type": "done"})
         except TimeoutError:
             yield encode({"type": "error", "message": "Prazo de análise excedido. As evidências disponíveis continuam nos painéis; tente novamente."})
             yield encode({"type": "done"})

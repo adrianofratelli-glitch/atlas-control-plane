@@ -33,9 +33,8 @@ from atlas_client import (
     AtlasClient, create_index_direct,
     DEDICATED_TIERS, NVME_TIERS, TIER_PRICING_USD,
 )
-from ai_agent import (
-    generate_pdf_report, friendly_api_error,
-)
+from ai_agent import generate_pdf_report
+from llm_gateway import gateway_configured
 
 load_dotenv()
 observability.setup_logging()
@@ -235,7 +234,9 @@ def config():
     """Which integrations are configured on the server (without exposing secrets)."""
     return {
         "atlas":     bool(os.getenv("ATLAS_PUBLIC_KEY") and os.getenv("ATLAS_PRIVATE_KEY")),
-        "anthropic": bool(os.getenv("ANTHROPIC_API_KEY")),
+        # Kept as "anthropic" for UI compatibility: true only when the Grove gateway is set.
+        "anthropic": gateway_configured(),
+        "llm_gateway": gateway_configured(),
         "mongodb":   bool(os.getenv("MONGODB_URI")),
         "usd_brl":   USD_BRL,
         "tiers":     {"dedicated": DEDICATED_TIERS, "nvme": NVME_TIERS},

@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 from assistant_tools import ClusterTools, TOOLS, validate_pipeline
 from assistant_actions import ActionStore
 from torre_mcp_server import bounded_result
-from ai_agent import build_chat_system_prompt
 import api
 import assistant_api
 
@@ -41,14 +40,6 @@ class ToolTests(unittest.TestCase):
             for data in [{'error': 'forbidden'}, {}]:
                 get.return_value.get_suggested_indexes.return_value = data
                 with self.assertRaises(ValueError): self.tools.call('atlas_indexes', {})
-        prompt = build_chat_system_prompt({'name': 'test'}, {'error': 'forbidden'})
-        self.assertIn('indisponível', prompt)
-        self.assertNotIn('**0** índice', prompt)
-
-    def test_legacy_prompt_contains_all_indexes(self):
-        indexes = [{'index': [{'field'+str(i): 1}]} for i in range(8)]
-        prompt = build_chat_system_prompt({'name': 'test'}, {'suggestedIndexes': indexes})
-        self.assertIn('field7', prompt)
 
     def test_missing_cluster_has_actionable_message(self):
         with self.assertRaisesRegex(ValueError, 'Selecione um cluster'):

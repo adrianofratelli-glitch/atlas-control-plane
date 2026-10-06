@@ -4,7 +4,10 @@ uvicorn[standard]>=0.27,<0.35
 
 # Lógica de negócio (reusada pelo backend)
 requests>=2.31,<3
-anthropic>=0.30,<1
+# LLM: toda chamada passa pelo gateway Grove via pov-shared (grove_client), que não está
+# no PyPI. Instale no mesmo venv:  uv pip install --python venv/bin/python -e "../_shared[llm]"
+# (anthropic fica listado só pelos tipos usados nos testes; o cliente é o do pov-shared.)
+anthropic>=0.116,<1
 python-dotenv>=1.0,<2
 pymongo>=4.17,<5
 fpdf2>=2.7,<3

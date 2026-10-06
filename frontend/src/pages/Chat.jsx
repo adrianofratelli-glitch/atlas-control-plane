@@ -175,7 +175,7 @@ export default function Chat({ clusters, config, active = true }) {
     finally { if (run === generation.current) { lock.current = false; setBusy(false) } }
   }
 
-  if (!config.anthropic) return <Banner variant="warning">Configure a chave do modelo no servidor para habilitar o Assistente.</Banner>
+  if (!config.anthropic) return <Banner variant="warning">Gateway LLM (Grove) não configurado no servidor: defina GROVE_BASE_URL e GROVE_API_KEY no .env e reinicie o backend para habilitar o Assistente.</Banner>
   const matchingHistory = history.filter(h => (h.cluster || '') === context.cluster_name && h.project_id === context.project_id)
   return <div className="assistant-workspace">
     <header className="assistant-header">

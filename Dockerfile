@@ -17,8 +17,12 @@ WORKDIR /app
 
 COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
+# pov-shared (grove_client + guardrails) vem de um contexto nomeado:
+#   docker build --build-context shared=../_shared -t torre .
+COPY --from=shared . /opt/pov-shared
+RUN pip install --no-cache-dir "/opt/pov-shared[llm]"
 
-COPY api.py atlas_client.py ai_agent.py chat_memory.py observability.py assistant_*.py torre_mcp_server.py ./
+COPY *.py ./
 COPY --from=frontend-build /build/dist ./frontend/dist
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY docker/start.sh /start.sh
