@@ -19,8 +19,9 @@ from threading import Lock
 from typing import Literal, Optional
 from uuid import uuid4
 
+import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
@@ -122,8 +123,36 @@ def get_client() -> AtlasClient:
         return _client_singleton
 
 
+# ── Input boundary for Atlas identifiers ─────────────────────────────────────
+# Path params and body ids are interpolated into Admin API URLs: anything outside the
+# Atlas alphabet (dot segments, "?", JSON operators, unicode, megabyte strings) is a 422
+# here, before any outbound call.
+PROJECT_ID_PATTERN = r"^[A-Za-z0-9]*$"          # Atlas project ids: 24 hex chars
+CLUSTER_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9-]*$|^$"  # Atlas: ASCII letters, digits, hyphen
+_PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9]{1,64}$")
+_CLUSTER_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,63}$")
+
+
+def _validate_atlas_path_params(request: Request):
+    params = request.path_params
+    if "project_id" in params and not _PROJECT_ID_RE.fullmatch(params["project_id"]):
+        raise HTTPException(status_code=422, detail="project_id inválido: use o id do projeto Atlas.")
+    if "cluster_name" in params and not _CLUSTER_NAME_RE.fullmatch(params["cluster_name"]):
+        raise HTTPException(status_code=422, detail="cluster_name inválido: use letras, números e hífen (até 64).")
+
+
 # ── App ───────────────────────────────────────────────────────────────────────
-app = FastAPI(title="Torre Atlas Control Plane API", version="3.1.0")
+app = FastAPI(title="Torre Atlas Control Plane API", version="3.2.0",
+              dependencies=[Depends(_validate_atlas_path_params)])
+
+
+@app.exception_handler(requests.RequestException)
+async def _atlas_unavailable(request: Request, exc: requests.RequestException):
+    """Atlas Admin API 5xx/timeout/connection errors: sanitized 502, never a bare 500."""
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    logger.warning("Atlas Admin API falhou path=%s status=%s err=%s", request.url.path, status, type(exc).__name__)
+    detail = (f"Atlas Admin API respondeu HTTP {status}." if status else "Atlas Admin API não respondeu a tempo.")
+    return JSONResponse(status_code=502, content={"detail": detail + " Tente novamente em instantes; nenhum dado foi alterado."})
 
 app.add_middleware(
     CORSMiddleware,
@@ -544,14 +573,14 @@ def scale(project_id: str, cluster_name: str, body: ScaleBody):
 class IndexBody(BaseModel):
     namespace: str = Field(..., min_length=3, max_length=255)
     index_keys: list[dict[str, int | str]] = Field(..., min_length=1, max_length=10)
-    project_id: str = Field(..., min_length=1, max_length=128)
-    cluster_name: str = Field(..., min_length=1, max_length=128)
+    project_id: str = Field(..., min_length=1, max_length=64, pattern=PROJECT_ID_PATTERN)
+    cluster_name: str = Field(..., min_length=1, max_length=64, pattern=CLUSTER_NAME_PATTERN)
 
 class ExplainBody(BaseModel):
     namespace: str = Field(..., min_length=3, max_length=255)
     filter: dict = Field(default_factory=dict)
-    project_id: str = Field(..., min_length=1, max_length=128)
-    cluster_name: str = Field(..., min_length=1, max_length=128)
+    project_id: str = Field(..., min_length=1, max_length=64, pattern=PROJECT_ID_PATTERN)
+    cluster_name: str = Field(..., min_length=1, max_length=64, pattern=CLUSTER_NAME_PATTERN)
 
 
 def _assert_uri_targets(project_id: Optional[str], cluster_name: Optional[str]):
@@ -638,7 +667,7 @@ def explain_query(body: ExplainBody):
         parts = body.namespace.split(".", 1)
         db_name, coll = parts[0], (parts[1] if len(parts) > 1 else parts[0])
         mc = _mongo(uri)
-        plan = mc[db_name].command("explain", {"find": coll, "filter": body.filter},
+        plan = mc[db_name].command("explain", {"find": coll, "filter": body.filter, "maxTimeMS": 10000},
                                    verbosity="executionStats")
         exe = plan.get("executionStats", {})
         win = plan.get("queryPlanner", {}).get("winningPlan", {})
@@ -651,7 +680,9 @@ def explain_query(body: ExplainBody):
             "index_used": win.get("inputStage", {}).get("indexName") or win.get("indexName") or "COLLSCAN (sem índice)",
         }
     except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        # Driver errors can carry hostnames/URIs: log server-side, sanitize for the client.
+        logger.warning("explain falhou namespace=%s err=%s", body.namespace, type(e).__name__)
+        raise HTTPException(status_code=502, detail="Explain falhou no cluster (filtro inválido, prazo de 10 s ou permissão). Revise o filtro e tente novamente.")
 
 
 @app.post("/api/index")
@@ -673,8 +704,8 @@ def cost(tier: str):
 
 # ── AI: analysis (stream) and chat (stream) ───────────────────────────────────
 class AnalyzeBody(BaseModel):
-    project_id: str = Field(..., min_length=1, max_length=128)
-    cluster_name: str = Field(..., min_length=1, max_length=128)
+    project_id: str = Field(..., min_length=1, max_length=64, pattern=PROJECT_ID_PATTERN)
+    cluster_name: str = Field(..., min_length=1, max_length=64, pattern=CLUSTER_NAME_PATTERN)
 
 async def _mcp_text_response(messages, project_id, cluster_name, *, mode="chat", conversation_id=None):
     """Compatibility text streams use the same MCP runtime as the assistant."""
@@ -709,9 +740,9 @@ class ChatMessage(BaseModel):
 
 class ChatBody(BaseModel):
     messages: list[ChatMessage] = Field(..., min_length=1, max_length=16)
-    project_id: Optional[str] = None
-    cluster_name: Optional[str] = None
-    conversation_id: Optional[str] = None
+    project_id: Optional[str] = Field(default=None, max_length=64, pattern=PROJECT_ID_PATTERN)
+    cluster_name: Optional[str] = Field(default=None, max_length=64, pattern=CLUSTER_NAME_PATTERN)
+    conversation_id: Optional[str] = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_-]*$")
 
 
 _OUT_OF_SCOPE_PATTERNS = (
@@ -786,7 +817,7 @@ async def chat(body: ChatBody):
 
 # ── Analysis PDF report (MongoDB branding, Markdown fallback) ─────────────────
 class ReportBody(BaseModel):
-    cluster_name: str = Field(..., min_length=1, max_length=128)
+    cluster_name: str = Field(..., min_length=1, max_length=64, pattern=CLUSTER_NAME_PATTERN)
     analysis: str = Field(..., min_length=1, max_length=100_000)
     health_score: Optional[int] = Field(default=None, ge=0, le=100)
     health_issues: Optional[list[str]] = Field(default=None, max_length=50)
