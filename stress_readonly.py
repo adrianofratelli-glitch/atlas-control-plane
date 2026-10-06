@@ -80,6 +80,9 @@ def main():
                 elif shape == 2:
                     collection.count_documents({'segmento': sample.get('segmento', '__torre_missing__'), f'{prefix}_mt_type': 'd'}, maxTimeMS=5000, comment='torre-stress-count')
                 else:
+                # EXCEÇÃO EXPLÍCITA à regra "sem $regex": gerador de carga proposital. O regex case-insensitive
+                # não usa os limites do índice e produz a query lenta que o Query Profiler/Performance Advisor
+                # precisam mostrar na demo. Nunca copie este padrão para o caminho da app (texto = $search).
                     list(collection.find({f'{prefix}_mt_desc': {'$regex': '^AMAZON', '$options': 'i'}}, {'_id': 1}).limit(30).max_time_ms(5000).comment('torre-stress-regex'))
             except ExecutionTimeout:
                 status = 'timeouts'

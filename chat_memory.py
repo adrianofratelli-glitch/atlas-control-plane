@@ -25,7 +25,7 @@ from bson import ObjectId
 from pymongo import MongoClient, TEXT, DESCENDING
 from pymongo.collection import Collection
 
-DB_NAME   = "torre"
+DB_NAME   = os.getenv("MONGODB_DB", "torre")  # same DB as the LangGraph checkpoints
 COLL_NAME = "chat_history"
 CHAT_MAX_MESSAGES = max(2, int(os.getenv("CHAT_MAX_MESSAGES", "100")))
 # TTL is mandatory — an unset or explicitly-zero CHAT_RETENTION_DAYS must not
@@ -54,16 +54,16 @@ def _oid(conversation_id: str) -> ObjectId:
 
 
 # ── Connection ────────────────────────────────────────────────────────────────
-def _get_collection(mongo_uri: str) -> Collection:
+def _get_collection(mongo_uri: str, db_name: Optional[str] = None) -> Collection:
     with _clients_lock:
         if mongo_uri not in _clients:
             _clients[mongo_uri] = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
-    return _clients[mongo_uri][DB_NAME][COLL_NAME]
+    return _clients[mongo_uri][db_name or DB_NAME][COLL_NAME]
 
 
-def init_db(mongo_uri: str):
+def init_db(mongo_uri: str, db_name: Optional[str] = None):
     """Ensure indexes exist on the collection. Idempotent."""
-    coll = _get_collection(mongo_uri)
+    coll = _get_collection(mongo_uri, db_name)
 
     existing = {idx["name"] for idx in coll.list_indexes()}
 
