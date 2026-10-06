@@ -114,6 +114,9 @@ def worker():
         run("tx inst", tx.find({"amos_mt_inst_nbr": inst, "segmento": seg}).limit(80))
 
         # 10. Regex (very slow → great for the Profiler)
+        # EXCEÇÃO EXPLÍCITA à regra "sem $regex": gerador de carga proposital. O regex case-insensitive
+        # não usa os limites do índice e produz a query lenta que o Query Profiler/Performance Advisor
+        # precisam mostrar na demo. Nunca copie este padrão para o caminho da app (texto = $search).
         run("tx regex",  tx.find({"amos_mt_desc":  {"$regex": f"^{prefix}", "$options": "i"}}).limit(30))
         run("fat regex", fat.find({"amss_mt_desc": {"$regex": f"^{prefix}", "$options": "i"}}).limit(30))
 

@@ -63,11 +63,18 @@ def page(items, args):
     return {"items": values[offset:offset + limit], "total_count": len(values), "has_more": more, "next_offset": offset + limit if more else None}
 
 
+def internal_databases():
+    """Torre's own state (chat history + LangGraph checkpoints of EVERY session)."""
+    import os
+    return {"torre", os.getenv("MONGODB_DB", "torre").lower()}
+
+
 def safe_namespace(namespace):
     import api
     api._assert_namespace_is_safe(namespace)
-    if namespace == "torre.chat_history":
-        raise ValueError("Histórico interno não é uma coleção de demonstração.")
+    # Checkpoints hold other sessions' full conversations: never readable via the assistant.
+    if namespace.split(".", 1)[0].lower() in internal_databases():
+        raise ValueError("Banco interno da Torre (histórico e checkpoints) não é uma coleção de demonstração.")
 
 
 def safe_expression(value):
@@ -79,6 +86,14 @@ def safe_expression(value):
     elif isinstance(value, list):
         for child in value:
             safe_expression(child)
+
+
+def _uses_operator(value, operator):
+    if isinstance(value, dict):
+        return any(k == operator or _uses_operator(v, operator) for k, v in value.items())
+    if isinstance(value, list):
+        return any(_uses_operator(v, operator) for v in value)
+    return False
 
 
 READ_STAGES = {"$match", "$project", "$sort", "$limit", "$skip", "$group", "$count", "$unwind", "$addFields", "$set", "$unset", "$replaceRoot", "$replaceWith", "$sortByCount", "$bucket", "$bucketAuto", "$facet", "$lookup", "$sample", "$search", "$searchMeta", "$vectorSearch", "$setWindowFields", "$densify", "$fill"}
@@ -118,6 +133,10 @@ class ClusterTools:
             safe_namespace(f"{args['database']}.probe")
         for field in ("filter", "projection", "sort", "update", "validator", "definition"):
             safe_expression(args.get(field, {}))
+        scoped = {k: args.get(k) for k in ("filter", "pipeline")}
+        if name != "mongo_explain" and (_uses_operator(scoped, "$regex") or _uses_operator(scoped, "$regularExpression")):
+            # Busca textual na app é Atlas Search; $regex só em explain (para diagnosticar a slow query).
+            raise ValueError("$regex não é usado pela Torre: para busca textual use $search (Atlas Search) em mongo_aggregate.")
         if "pipeline" in args:
             validate_pipeline(args["pipeline"], args["namespace"].split(".", 1)[0])
         if name in {"mongo_update", "mongo_delete"} and not args["filter"]:
@@ -191,9 +210,10 @@ class ClusterTools:
             return data
         mc = self.mongo()
         if name == "mongo_databases":
-            return page(sorted(d for d in mc.list_database_names() if d not in api._PROTECTED_DATABASES), args)
+            hidden = api._PROTECTED_DATABASES | internal_databases()
+            return page(sorted(d for d in mc.list_database_names() if d.lower() not in hidden), args)
         if name == "mongo_collections":
-            return page(sorted(c for c in mc[args["database"]].list_collection_names() if not c.startswith("system.") and f"{args['database']}.{c}" != "torre.chat_history"), args)
+            return page(sorted(c for c in mc[args["database"]].list_collection_names() if not c.startswith("system.")), args)
         db, collection = args["namespace"].split(".", 1)
         coll = mc[db][collection]
         filt = json_util.loads(json.dumps(args.get("filter", {})))

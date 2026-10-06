@@ -2,11 +2,11 @@
 
 > Cobre o **Assistente operacional** (aba "Assistente" / `POST /api/assistant`),
 > que é o componente com "ai-chat" mais sofisticado da PoV. O loop de tool-use
-> da Anthropic sobre o servidor MCP próprio roda hoje como um StateGraph do
+> do Claude (via gateway Grove, `llm_gateway.py`) sobre o servidor MCP próprio roda hoje como um StateGraph do
 > LangGraph (`assistant_graph.py`, migrado 2026-09-29) — dois nós,
 > `call_model`/`call_tools`, que se alternam até faltar tool_use ou estourar um
 > dos dois tetos. `assistant_runtime.py` continua dono da sessão MCP, do
-> client Anthropic e do trace Langfuse (ligados ao `async with` do transporte
+> client do gateway (`AsyncGroveClient`) e do trace Langfuse (ligados ao `async with` do transporte
 > stdio), e só delega a alternância pensar/agir pro grafo.
 >
 > As rotas `/api/chat` e `/api/analyze` também usam esse runtime MCP real. Relatórios (`mode=report`) coletam evidências por MCP e fazem uma única chamada de síntese; o chat mantém o loop de ferramentas. `/api/report` apenas renderiza PDF.
@@ -19,7 +19,7 @@ React Chat.jsx
       --> assistant_runtime._produce(...)
             spawna um subprocesso MCP por rodada:
               torre_mcp_server.py PROJECT_ID CLUSTER_NAME
-            --> loop de até 12 iterações Anthropic tool-use
+            --> loop de até 12 iterações de tool-use (Claude via Grove)
                   --> ClientSession MCP (stdio) --> ClusterTools (assistant_tools.py)
       --> eventos NDJSON: connected, trace_url, text, tool_start, tool_end, action, done/error
   --cartão de aprovação no chat--> POST /api/assistant/actions/{id}
@@ -73,8 +73,8 @@ não existia antes da migração). Checkpoint em MongoDB via
    - **Limite de 40 chamadas de ferramenta por rodada** (contador `calls`,
      `assistant_runtime.py:107-111`) — corta a análise em vez de deixar o
      modelo martelar ferramentas indefinidamente.
-6. **Encerramento**: fecha o cliente Anthropic próprio se foi criado aqui, e
-   sempre finaliza a trace Langfuse com o texto completo da resposta
+6. **Encerramento**: fecha o cliente do gateway se foi criado aqui, e
+   sempre finaliza a trace Langfuse com o texto completo da resposta (mascarado)
    (`finally`, `assistant_runtime.py:144-147`).
 
 `run_assistant` (`assistant_runtime.py:150-174`) é só o adaptador que
@@ -103,7 +103,7 @@ modelo recebe é: histórico recente da conversa + registro de ações da sessã
 
 ## 4. Ferramentas — o "tool belt" do agente
 
-28 ferramentas, geradas dinamicamente a partir do catálogo declarativo `TOOLS`
+29 ferramentas, geradas dinamicamente a partir do catálogo declarativo `TOOLS`
 em `assistant_tools.py:24-51` e servidas por `torre_mcp_server.py`, que **não
 expõe nenhuma ferramenta de execução real** — só leitura e preparação
 (`ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True,
@@ -213,3 +213,12 @@ não gera ações — é só leitura + texto.
 `assistant_report.py` coleta `atlas_cluster_insights`, `atlas_cluster`, `atlas_indexes` e `atlas_slow_queries` na mesma sessão MCP. Se o tier estiver disponível, consulta `atlas_cost`. Cada leitura tem prazo de 45s; a resposta do modelo, 75s. Erros de coleta viram evidências indisponíveis, sem serem interpretados como zero. O runtime envia heartbeat a cada cinco segundos, e o frontend encerra o estado de espera com conclusão ou erro explícito.
 
 O relatório não prepara alterações nem executa explains automaticamente. Distingue sugestões do Advisor de índices existentes e limita decisões de capacidade à cobertura disponível. O chat pode aprofundar a análise com `mongo_explain`, incluindo filtro, sort e limite.
+
+## Endurecimento 3.2.0 (2026-10)
+
+- **Gateway único, falha fechado.** `llm_gateway.async_client()` exige `GROVE_BASE_URL` e `GROVE_API_KEY` antes de abrir o MCP; sem eles o stream devolve um `error` explicando o que configurar e termina com `done`. Haiku é mapeado para `claude-sonnet-5-5`. Retry/backoff, circuit breaker e troca de chave vêm do `grove_client` (`_shared`), cobrindo a abertura do stream.
+- **Trace depois da máscara.** `tracing.mask_for_trace` aplica `guardrails.mask_pii` do `_shared` (CPF, CNPJ, e-mail, telefone) mais cartão (Luhn) e connection strings a toda trace, generation e span, inclusive entradas/saídas de ferramenta. O modelo continua recebendo o texto original; só a observabilidade é mascarada.
+- **Estado por turno.** O grafo recebe todos os canais (`tool_uses`, `outcome`) zerados a cada turno. Antes, com checkpoint, o `outcome` do turno anterior era restaurado e encerrava o turno 2+ logo após a chamada ao modelo, sem executar as ferramentas pedidas.
+- **Banco interno fora do alcance.** O banco de estado (`MONGODB_DB`, padrão `torre`, com histórico e checkpoints de todas as sessões) é bloqueado nas ferramentas de dados e oculto em `mongo_databases`. `$regex` é recusado em find/count/aggregate (busca textual é `$search`); `explain` ainda aceita, para diagnosticar a slow query.
+- **Prompt injection.** O catálogo não tem shell, usuários/papéis, `dropDatabase`, backup nem comando arbitrário. Pedidos destrutivos, inclusive vindos de documento ou "aprovação do diretor" em texto, só viram cartão `pending` com `destructive: true`; a execução depende do endpoint de aprovação, de uso único sob concorrência.
+

@@ -101,6 +101,9 @@ def make_shapes(db):
         (8,  lambda v: fat.find({"amss_mt_plan": v["plan"], "amss_mt_type": v["typ"]}).limit(100).max_time_ms(15000)),
         (8,  lambda v: fat.find({"amss_mt_eff_date": {"$gte": v["d_fat"][0], "$lte": v["d_fat"][1]}}).limit(100).max_time_ms(15000)),
         (6,  lambda v: fat.find({"amss_mt_amount": {"$gt": v["amt_lo"], "$lt": v["amt_hi"]}}).limit(100).max_time_ms(15000)),
+        # EXCEÇÃO EXPLÍCITA à regra "sem $regex": gerador de carga proposital. O regex case-insensitive
+        # não usa os limites do índice e produz a query lenta que o Query Profiler/Performance Advisor
+        # precisam mostrar na demo. Nunca copie este padrão para o caminho da app (texto = $search).
         (5,  lambda v: fat.find({"amss_mt_desc": {"$regex": f"^{v['prefix']}", "$options": "i"}}).limit(30).max_time_ms(20000)),
         # fatura: indexed account_number but blocking sort on unindexed field
         (8,  lambda v: fat.find({"account_number": v["acc"]}).sort("amss_mt_eff_date", -1).limit(50).max_time_ms(15000)),
@@ -114,6 +117,7 @@ def make_shapes(db):
         (6,  lambda v: tx.find({"amos_mt_amount": {"$gt": v["amt_lo"], "$lt": v["amt_hi"]}}).limit(100).max_time_ms(15000)),
         (6,  lambda v: tx.find({"amos_mt_inst_nbr": v["inst"], "amos_mt_plan": v["plan"]}).limit(80).max_time_ms(15000)),
         # case-insensitive regex can't use the amos_mt_desc index bounds
+        # (mesma exceção explícita acima: carga proposital, fora do caminho da app)
         (5,  lambda v: tx.find({"amos_mt_desc": {"$regex": f"^{v['prefix']}", "$options": "i"}}).limit(30).max_time_ms(20000)),
         # IXSCAN on segmento + blocking sort on unindexed eff_date
         (5,  lambda v: tx.find({"segmento": v["seg"], "amos_mt_type": v["typ"]}).sort("amos_mt_eff_date", -1).limit(50).max_time_ms(25000)),
@@ -172,11 +176,12 @@ def write_worker():
                 "segmento": random.choice(SEGMENTS),
                 "status": "pendente",
                 "ts": datetime.now(timezone.utc),
+                "_torre_workload": True,  # scripts/reset_demo.py remove só o que tem esta marca
             } for _ in range(200)]
             ev.insert_many(docs)
             # update without index on status → scans, generates write + read load
             ev.update_many(
-                {"status": "pendente", "valor": {"$lt": 1000}},
+                {"status": "pendente", "valor": {"$lt": 1000}, "_torre_workload": True},
                 {"$set": {"status": "liquidado"}},
             )
             with lock:
@@ -193,7 +198,12 @@ if __name__ == "__main__":
           f"{DURATION_SECS // 60} min. Início: {datetime.now().strftime('%H:%M:%S')}\n")
 
     threads = [threading.Thread(target=read_worker, daemon=True) for _ in range(READ_THREADS)]
-    threads += [threading.Thread(target=write_worker, daemon=True) for _ in range(WRITE_THREADS)]
+    # Write threads touch banco_inter (dataset da demo): só com consentimento explícito.
+    if os.getenv("ALLOW_DEMO_DB_WRITE") == "1":
+        threads += [threading.Thread(target=write_worker, daemon=True) for _ in range(WRITE_THREADS)]
+    else:
+        print("Escritas desligadas (ALLOW_DEMO_DB_WRITE!=1): só leitura. "
+              "Documentos inseridos levam _torre_workload=true e saem com scripts/reset_demo.py.\n")
     for t in threads:
         t.start()
 

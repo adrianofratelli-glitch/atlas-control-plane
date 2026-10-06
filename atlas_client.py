@@ -16,16 +16,34 @@ _RATE_LIMIT_MAX_ATTEMPTS = 3
 _RATE_LIMIT_BASE_DELAY_S = 1.0
 
 
+_TRANSIENT_STATUS = {502, 503, 504}
+
+
 def _with_rate_limit_retry(fn):
+    # GETs are idempotent: they also retry transient 502/503/504 and connection resets.
+    # PATCH (tier change) only retries 429, which Atlas guarantees was not applied.
+    idempotent = fn.__name__ == "_get"
+
     @wraps(fn)
     def wrapper(*args, **kwargs):
         attempt = 0
         while True:
             try:
                 return fn(*args, **kwargs)
+            except requests.ConnectionError:
+                if not idempotent or attempt >= _RATE_LIMIT_MAX_ATTEMPTS - 1:
+                    raise
+                delay = _RATE_LIMIT_BASE_DELAY_S * (2 ** attempt) + random.uniform(0, 0.25)
+                logger.warning("Atlas Admin API sem conexão — tentativa %d/%d, aguardando %.2fs",
+                               attempt + 1, _RATE_LIMIT_MAX_ATTEMPTS, delay)
+                time.sleep(delay)
+                attempt += 1
+                continue
             except requests.HTTPError as e:
                 resp = e.response
-                if resp is None or resp.status_code != 429 or attempt >= _RATE_LIMIT_MAX_ATTEMPTS - 1:
+                status = resp.status_code if resp is not None else None
+                retryable = status == 429 or (idempotent and status in _TRANSIENT_STATUS)
+                if not retryable or attempt >= _RATE_LIMIT_MAX_ATTEMPTS - 1:
                     raise
                 retry_after = resp.headers.get("Retry-After")
                 if retry_after:
@@ -37,8 +55,8 @@ def _with_rate_limit_retry(fn):
                     delay = _RATE_LIMIT_BASE_DELAY_S * (2 ** attempt)
                 delay += random.uniform(0, 0.25)
                 logger.warning(
-                    "Atlas Admin API 429 — tentativa %d/%d, aguardando %.2fs",
-                    attempt + 1, _RATE_LIMIT_MAX_ATTEMPTS, delay,
+                    "Atlas Admin API %s — tentativa %d/%d, aguardando %.2fs",
+                    status, attempt + 1, _RATE_LIMIT_MAX_ATTEMPTS, delay,
                 )
                 time.sleep(delay)
                 attempt += 1

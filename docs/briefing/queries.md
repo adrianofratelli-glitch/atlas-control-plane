@@ -278,3 +278,8 @@ em campo de escrita frequente, não só leitura.
 `mongo_explain` aceita `sort` validado (direções 1 ou -1) e limite de até 100 documentos. Consultas lentas são ordenadas pelas mais recentes e paginadas.
 
 `stress_readonly.py` usa um único pool de conexão, divide leituras entre primário e secundários, limita concorrência e duração e aplica `maxTimeMS`. O workload é identificado por `appName`/`comment`, permitindo distinguir carga sintética de tráfego orgânico nos relatórios. Não grava no dataset.
+
+## Exceção documentada: `$regex` nos geradores de carga
+
+Nenhuma query da aplicação usa `$regex` (busca textual é `$search`). As ferramentas de dados do assistente recusam `$regex` e `$regularExpression` em `mongo_find`, `mongo_count` e `mongo_aggregate`; só `mongo_explain` e `POST /api/explain` aceitam, porque é assim que a slow query do Profiler é diagnosticada (`explain` com `maxTimeMS: 10000`). A exceção são os três geradores de carga, que usam regex de prefixo case-insensitive de propósito para produzir a query lenta (COLLSCAN) que o Profiler e o Performance Advisor precisam mostrar: `populate_profiler.py`, `populate_workload.py` e `stress_readonly.py`. Cada ocorrência tem o comentário `EXCEÇÃO EXPLÍCITA`, e `tests/test_hardening_adversarial.py` falha se `$regex` aparecer em qualquer outro módulo. `populate_workload.py` só escreve com `ALLOW_DEMO_DB_WRITE=1` e marca os documentos com `_torre_workload: true`, que `scripts/reset_demo.py` remove.
+

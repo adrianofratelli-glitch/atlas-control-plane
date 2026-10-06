@@ -19,9 +19,9 @@ partir de `frontend/src/pages/`:
 | `finops` | FinOps | `FinOps.jsx` | Coin | `docs/screenshots/04-finops.png` |
 | `chat` | Assistente | `Chat.jsx` | Sparkle | `docs/screenshots/05-ai-chat.png` |
 
-`Clusters.jsx` e `Compare.jsx` existem no diretório de páginas mas **não estão
-no menu principal** — a densidade da navegação foi deliberadamente reduzida a
-cinco destinos operacionais (a nota do README chama isso de "modo palco").
+`Clusters.jsx` e `Compare.jsx` foram removidos na 3.2.0: estavam fora do menu, e o
+que mostravam (lista de clusters, health lado a lado) já está em Visão Geral e Saúde.
+A navegação fica em sete destinos operacionais.
 Índices/Consultas continuam acessíveis como módulos auxiliares que alimentam o
 resto (Performance Advisor e Query Profiler ficam vazios em cluster ocioso,
 por isso os `populate_*` scripts existem — ver `queries.md`, seção 5).

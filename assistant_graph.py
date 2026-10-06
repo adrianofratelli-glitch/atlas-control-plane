@@ -6,7 +6,7 @@ reorganiza o MESMO loop em dois nós (`call_model` / `call_tools`) que se altern
 o modelo não pedir mais ferramenta, esgotar as 12 rodadas ou estourar as 40 chamadas —
 os mesmos três limites de antes, sem mudança de comportamento.
 
-`_produce` continua dono da sessão MCP, do client Anthropic e do trace do Langfuse
+`_produce` continua dono da sessão MCP, do client do gateway Grove e do trace do Langfuse
 (coisas ligadas ao `async with` do transporte stdio, que não fazem sentido dentro de um
 checkpoint) — eles entram nos nós via `config["configurable"]`, nunca no estado do grafo.
 """
@@ -25,6 +25,7 @@ from pymongo import MongoClient as SyncMongoClient
 
 import tracing
 from ai_agent import MODEL, _track_usage
+from llm_gateway import resolve_model
 from assistant_tools import TOOLS
 
 MAX_ITERATIONS = 12
@@ -54,7 +55,7 @@ async def n_call_model(state: LoopState, config) -> dict:
         return {"outcome": {"type": "error",
                              "message": "Análise atingiu o limite de etapas. Peça para continuar; resultados podem estar parciais."}}
 
-    iter_model = os.getenv("CLAUDE_MODEL", MODEL)
+    iter_model = resolve_model(os.getenv("CLAUDE_MODEL") or MODEL)
     iter_text = ""
     iter_t0 = time.perf_counter()
     await emit({"type": "model_start", "label": "Claude analisando contexto e ferramentas", "round": iteration})
@@ -196,8 +197,11 @@ async def run_loop(*, history, system, tools, client, mcp, emit, lf_trace, store
     criaria uma segunda referência que o patch nunca alcança.
     """
     graph = get_graph()
+    # Every channel is reset explicitly: with a checkpointer, keys left out of the input are
+    # restored from the previous turn of the same thread. A stale `outcome` ("done") made every
+    # turn after the first end right after the model call, skipping the tools it requested.
     initial: LoopState = {"history": history, "system": system, "calls": 0,
-                           "iteration": 0, "full_response": ""}
+                           "iteration": 0, "full_response": "", "tool_uses": [], "outcome": None}
     config = {"configurable": {
         "client": client, "tools": tools, "mcp": mcp, "emit": emit, "lf_trace": lf_trace,
         "store": store, "session_id": session_id, "project_id": project_id,
