@@ -6,6 +6,9 @@ import sys
 import tempfile
 import time
 import unittest
+import os
+# Offline: the LangGraph checkpointer must never write to the real demo DB from tests.
+os.environ['MONGODB_URI'] = ''
 from unittest.mock import patch, MagicMock
 from bson import ObjectId
 from fastapi.testclient import TestClient

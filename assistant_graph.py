@@ -197,8 +197,11 @@ async def run_loop(*, history, system, tools, client, mcp, emit, lf_trace, store
     criaria uma segunda referência que o patch nunca alcança.
     """
     graph = get_graph()
+    # Every channel is reset explicitly: with a checkpointer, keys left out of the input are
+    # restored from the previous turn of the same thread. A stale `outcome` ("done") made every
+    # turn after the first end right after the model call, skipping the tools it requested.
     initial: LoopState = {"history": history, "system": system, "calls": 0,
-                           "iteration": 0, "full_response": ""}
+                           "iteration": 0, "full_response": "", "tool_uses": [], "outcome": None}
     config = {"configurable": {
         "client": client, "tools": tools, "mcp": mcp, "emit": emit, "lf_trace": lf_trace,
         "store": store, "session_id": session_id, "project_id": project_id,
