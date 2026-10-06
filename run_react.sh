@@ -3,11 +3,21 @@
 # Uses portfolio-reserved ports and never stops an unrelated process.
 cd "$(dirname "$0")"
 
-# Activate venv (script relied on global python/pip, which don't exist on this machine)
-[ -f venv/bin/activate ] && source venv/bin/activate
+# One venv only: ./venv (created on first run).
+[ -f venv/bin/activate ] || python3 -m venv venv
+source venv/bin/activate
 
-# Load .env
-if [ -f .env ]; then export $(grep -v '^#' .env | xargs); echo "Loaded .env"; fi
+# Load .env literally (no shell expansion: URIs with "&"/"?" stay intact; nothing is echoed)
+if [ -f .env ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|\#*) continue ;; esac
+    key="${line%%=*}"; val="${line#*=}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    case "$val" in \"*\") val="${val#\"}"; val="${val%\"}" ;; \'*\') val="${val#\'}"; val="${val%\'}" ;; esac
+    export "$key=$val"
+  done < .env
+  echo "Loaded .env"
+fi
 
 # These defaults are reserved for Torre in the workspace-wide port registry.
 export API_PORT="${API_PORT:-8765}"
@@ -22,8 +32,16 @@ for port in "$API_PORT" "$WEB_PORT"; do
 done
 
 # Backend dependencies
-if ! python -c "import fastapi, mcp, jsonschema" 2>/dev/null; then
+if ! python -c "import fastapi, mcp, jsonschema, langgraph" 2>/dev/null; then
   echo "Installing backend dependencies..."; pip install -q -r requirements.txt
+fi
+# Every LLM call goes through the Grove gateway via pov-shared (not on PyPI).
+if ! python -c "import grove_client" 2>/dev/null; then
+  if [ -d ../_shared ]; then
+    echo "Installing pov-shared (grove_client) from ../_shared..."; pip install -q -e "../_shared[llm]"
+  else
+    echo "pov-shared not found: the assistant stays disabled (fail closed). See README > Run it."
+  fi
 fi
 
 echo "──────────────────────────────────────────────"
@@ -31,7 +49,7 @@ echo "Backend  (API) -> http://localhost:$API_PORT"
 echo "Frontend (UI)  -> http://localhost:$WEB_PORT"
 echo "──────────────────────────────────────────────"
 
-UVICORN_ARGS=(api:app --port "$API_PORT")
+UVICORN_ARGS=(api:app --host 127.0.0.1 --port "$API_PORT")
 [ "${POV_DEV:-0}" = "1" ] && UVICORN_ARGS+=(--reload)
 uvicorn "${UVICORN_ARGS[@]}" &
 BACK=$!
@@ -56,7 +74,8 @@ if [ "${TORRE_STRESS:-1}" = "1" ]; then
 fi
 
 cd frontend
-[ -d node_modules ] || npm install --silent
+# Reinstall when node_modules is missing OR incomplete (e.g. vite binary gone).
+[ -f node_modules/vite/bin/vite.js ] || npm ci --silent
 if [ "${POV_DEV:-0}" != "1" ] && {
   [ ! -f dist/index.html ] ||
   [ -n "$(find src -type f -newer dist/index.html -print -quit)" ] ||
