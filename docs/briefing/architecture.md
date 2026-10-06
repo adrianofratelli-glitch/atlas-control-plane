@@ -21,7 +21,7 @@ Admin API — não um resumo pré-mastigado.
 | Cluster observado | Atlas Admin API v2 (`HTTPDigestAuth`) | `atlas_client.py` |
 | IA — análise/chat | Claude via gateway configurado, evidências pelo MCP real | `assistant_runtime.py`, `assistant_graph.py`, `assistant_report.py` |
 | PDF | Renderização local do texto recebido | `ai_agent.py` |
-| IA — assistente operacional | Anthropic Claude + MCP (Model Context Protocol) sobre stdio | `assistant_runtime.py`, `torre_mcp_server.py`, `assistant_tools.py` |
+| IA — assistente operacional | Claude via gateway Grove (`llm_gateway.py` → `_shared/grove_client`) + MCP (Model Context Protocol) sobre stdio | `assistant_runtime.py`, `torre_mcp_server.py`, `assistant_tools.py` |
 | Memória do chat | MongoDB Atlas via `pymongo` | `chat_memory.py` |
 | Aprovações do assistente | SQLite local, single-host | `assistant_actions.py` (`.assistant-state/actions.sqlite3`) |
 | Observability opcional | Langfuse (self-host, fail-open) | `tracing.py` |
@@ -36,7 +36,9 @@ Admin API — não um resumo pré-mastigado.
 | `ai_agent.py` | utilitários de uso do modelo, renderização de PDF e helpers legados; rotas da UI usam o runtime MCP |
 | `chat_memory.py` | histórico de chat persistido no Atlas via pymongo (ver `queries.md`) |
 | `assistant_api.py` | rotas `/api/assistant/...` — conversa e aprovação/execução de ações |
-| `assistant_runtime.py` | loop de ferramentas Anthropic ↔ MCP do assistente operacional (ver `agent-behavior.md`) |
+| `assistant_runtime.py` | loop de ferramentas Claude ↔ MCP do assistente operacional (ver `agent-behavior.md`) |
+| `llm_gateway.py` | único ponto de entrada de LLM: `AsyncGroveClient` do `_shared`, falha fechado sem Grove |
+| `scripts/reset_demo.py` | reset idempotente do estado da Torre, com guarda `ALLOW_DEMO_DB_WRITE` |
 | `assistant_tools.py` | catálogo das 29 ferramentas MCP, validação de entrada, leitura e preparação de escrita |
 | `assistant_actions.py` | `ActionStore` — aprovações duráveis, single-use, em SQLite |
 | `torre_mcp_server.py` | servidor MCP sobre stdio; expõe só leitura + preparação, nunca execução |
@@ -71,7 +73,7 @@ React --fetch NDJSON--> /api/assistant (mode=report)
 
 ```
 React --fetch NDJSON--> /api/assistant (assistant_api.py)
-  --> assistant_runtime._produce (loop Anthropic tool-use)
+  --> assistant_runtime._produce (loop de tool-use, Claude via Grove)
       --> MCP client (stdio) --> torre_mcp_server.py --> assistant_tools.ClusterTools
               --> leitura: Atlas Admin API / pymongo
               --> escrita: só PREPARA (proposal), nunca executa
@@ -145,7 +147,8 @@ Detalhado nó a nó em `agent-behavior.md`.
 |---|---|---|
 | `ATLAS_PUBLIC_KEY` / `ATLAS_PRIVATE_KEY` | sim | credenciais da Admin API |
 | `ATLAS_ORG_ID` | sim | organização a inspecionar |
-| `ANTHROPIC_API_KEY` | sim | assistente, análise e relatórios |
+| `GROVE_BASE_URL` / `GROVE_API_KEY` | sim (para o assistente) | gateway LLM; sem eles o assistente fica desligado, sem fallback para chave direta |
+| `MONGODB_DB` | não | banco de estado da Torre (padrão `torre`): histórico e checkpoints |
 | `MONGODB_URI` | não | criação de índices direta + histórico de chat + dados do assistente |
 | `CLAUDE_MODEL` | não | default Sonnet 5 |
 | `API_AUTH_TOKEN` | não | liga autenticação bearer em todo endpoint `/api` não-health |

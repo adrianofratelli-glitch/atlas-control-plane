@@ -20,11 +20,11 @@ O seletor de cluster é compartilhado com Índices, Consultas, Saúde e Escala. 
 | Coleções | Descobrir estrutura observada | Criar/excluir coleção, definir validator |
 | Search / Vector | Listar índices e estados; agregações com `$search`/`$vectorSearch` | Criar, atualizar e remover índices |
 
-São 28 ferramentas. Não há shell, MQL arbitrário com efeitos colaterais, administração de usuários/IAM, exclusão de banco ou backup/restore neste catálogo. Novas operações devem ser registradas em `assistant_tools.py`, com schema, prévia e testes. Não anuncie suporte irrestrito a toda a API MongoDB.
+São 29 ferramentas (12 apenas preparam alterações para aprovação). Não há shell, MQL arbitrário com efeitos colaterais, administração de usuários/IAM, exclusão de banco ou backup/restore neste catálogo. Novas operações devem ser registradas em `assistant_tools.py`, com schema, prévia e testes. Não anuncie suporte irrestrito a toda a API MongoDB.
 
 ## Configuração
 
-Instale `requirements.txt`; `run_react.sh` também verifica a presença do SDK MCP. São usadas as mesmas variáveis Atlas, `MONGODB_URI`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` e `CLAUDE_MODEL` do restante da aplicação. O gateway personalizado usa `Authorization: Bearer` e a chave real em `x-api-key`; sem gateway, usa autenticação nativa Anthropic. Credenciais não são enviadas ao frontend.
+Instale `requirements.txt`; `run_react.sh` também verifica a presença do SDK MCP. São usadas as mesmas variáveis Atlas, `MONGODB_URI`, `MONGODB_DB`, `GROVE_BASE_URL`, `GROVE_API_KEY` e `CLAUDE_MODEL` do restante da aplicação. Toda chamada ao modelo passa pelo gateway Grove via `pov-shared` (`llm_gateway.py` → `grove_client.AsyncGroveClient`: `Authorization: Bearer` + chave real em `x-api-key`, retry/backoff em 429/5xx, circuit breaker e troca de chave). Sem `GROVE_BASE_URL` e `GROVE_API_KEY` o assistente fica desligado (falha fechado); não há fallback para chave direta do provedor. O subprocesso MCP não recebe credenciais de LLM nem de tracing. Credenciais não são enviadas ao frontend.
 
 A conexão `MONGODB_URI` é validada contra o cluster selecionado antes de cada operação de dados e novamente antes da execução. Se não corresponder, a operação é recusada. Uma única URI não dá acesso aos dados de todos os clusters da organização; a API Atlas pode listar outros clusters, mas a conexão de dados precisa corresponder ao alvo escolhido.
 
