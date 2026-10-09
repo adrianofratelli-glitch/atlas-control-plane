@@ -531,15 +531,20 @@ def _finops_sync():
 
 
 @app.get("/api/cluster/{project_id}/{cluster_name}/scaling")
-def scaling(project_id: str, cluster_name: str, tier: str):
+def scaling(project_id: str, cluster_name: str, tier: Optional[str] = Query(None, max_length=32)):
     client = get_client()
+    if not tier:  # the UI always sends it; API callers may omit it and get the cluster's own tier
+        try:
+            tier = client.get_cluster(project_id, cluster_name)["replicationSpecs"][0]["regionConfigs"][0]["electableSpecs"]["instanceSize"]
+        except Exception:  # noqa: BLE001 — collect_insights reports the Atlas failure itself
+            tier = None
     insight = metrics_cache.get((_client_credentials_key(), "scaling", project_id, cluster_name, tier), 60,
         lambda: collect_insights(client, project_id, cluster_name, tier))
     # Keep the existing UI contract, but use worst-node CPU and avoid false OK.
     snapshot = next((n.get("snapshot", {}) for n in insight["nodes"] if n.get("role") == "REPLICA_PRIMARY"), {})
     metrics = {**snapshot, "cpu_p95_24h": insight["worst_node_p95"], "cpu_avg_24h": insight["cpu"],
                "conn_pct": round(snapshot.get("connections", 0) / AtlasClient.TIER_CONN_LIMIT.get(tier, 1500) * 100, 1)}
-    return {**insight, "headline": insight["verdict"],
+    return {**insight, "tier": tier, "headline": insight["verdict"],
             "severity": "high" if insight["action"] == "up" else "med" if insight["action"] in ("unknown", "investigate") else "low",
             "metrics": metrics if snapshot and "error" not in snapshot else None}
 

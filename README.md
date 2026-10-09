@@ -128,7 +128,7 @@ venv/bin/python -m unittest discover -s tests -v
 cd frontend && node --test tests/*.test.mjs
 ```
 
-Offline, no credentials needed: scaling heuristic, injection guards, chat-memory ids, the assistant graph, and `tests/test_hardening_adversarial.py` (gateway fail-closed and 429/5xx retry, PII never reaching Langfuse, prompt injection and tool abuse, hostile ids and payloads, Atlas 429/5xx/timeouts, concurrent approvals, reset guard). Tests force the in-memory checkpointer, so they never write to a real database.
+Offline, no credentials needed: scaling heuristic, injection guards, chat-memory ids, the assistant graph, and `tests/test_hardening_adversarial.py` (gateway fail-closed and 429/5xx retry, PII never reaching Langfuse, prompt injection and tool abuse, hostile ids and payloads, Atlas 429/5xx/timeouts, concurrent approvals, reset guard) and `tests/test_bootstrap_docs_and_slow_log.py` (docs never ask for a direct provider key, the Docker build always gets the `shared` context, slow-log cap, `/scaling` without `tier`). Tests force the in-memory checkpointer, so they never write to a real database.
 
 ## Production boundary
 

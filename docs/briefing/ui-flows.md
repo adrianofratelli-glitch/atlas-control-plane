@@ -92,7 +92,7 @@ tela só (sem abrir páginas de diagnóstico separadas). Consome
 
 ### Scale — `docs/screenshots/03-scale.png`
 
-A tela mais sensível da PoV. Mostra a recomendação (`GET /scaling`) e o botão
+A tela mais sensível da PoV. Mostra a recomendação (`GET /scaling`; a UI manda `tier`, e sem ele a API usa o tier atual do cluster) e o botão
 de execução (`POST /scale`, único ponto de escrita direta do frontend sobre a
 Admin API — `scaleCluster` em `api.js:21`). **Regra de diagramação: o número
 da heurística e a justificativa do Claude ficam separados literalmente no

@@ -3,6 +3,7 @@
 ## 3.2.1 (2026-10-09)
 
 - API: `/api/cluster/{project}/{cluster}/slow` asks Atlas for `nLogs` and caps the response (default 1000 lines, `?limit=` 1–5000) instead of returning the whole slow log (~12 MB on the demo cluster). The Profiler says how many entries it grouped.
+- API: `/scaling` no longer answers 422 when `tier` is omitted; it uses the cluster's current tier and returns it (`tier` capped at 32 chars).
 - Docs: every `docker build` passes `--build-context shared=../_shared`; bootstrap only mentions the Grove gateway (no direct provider key). Regression tests in `tests/test_bootstrap_docs_and_slow_log.py`.
 - Deps: `pov-shared` 0.2.1 (editable); its `mask_pii` now covers card numbers too, the local Luhn mask stays as defense in depth.
 
