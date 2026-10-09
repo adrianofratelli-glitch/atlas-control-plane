@@ -30,7 +30,7 @@ Everything comes from the Atlas Admin API v2. The UI is in Brazilian Portuguese 
 
 Note what it does in that screenshot: asked about 24h, it says it only has the last 5 minutes and shows how to get the rest, instead of inventing a number.
 
-Also in the menu: **Performance Advisor** (suggested indexes, one-click creation via pymongo, Claude analysis, PDF export), **Query Profiler** (slow queries parsed with a real `explain('executionStats')`).
+Also in the menu: **Performance Advisor** (suggested indexes, one-click creation via pymongo, Claude analysis, PDF export), **Query Profiler** (the most recent slow-log lines, 1000 by default and `?limit=` up to 5000, grouped by shape and checked with a real `explain('executionStats')`).
 
 > The screenshots run against a real Atlas organization; project and cluster names were replaced with neutral ones.
 

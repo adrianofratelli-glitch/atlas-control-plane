@@ -29,9 +29,10 @@ export default function Profiler({ clusters, config }) {
   const [filter, setFilter] = useState('all')   // all | read | write | collscan
   const [open, setOpen] = useState(null)        // key of the expanded row (stable across sort/filter)
   const [expl, setExpl] = useState(null)        // { key, busy, data, err } — real explain result
+  const [meta, setMeta] = useState(null)        // { limit, truncated, total } of the last load
 
   const load = async () => {
-    setBusy(true); setErr(null); setRows(null); setOpen(null); setExpl(null)
+    setBusy(true); setErr(null); setRows(null); setOpen(null); setExpl(null); setMeta(null)
     try {
       const data = await getSlow(sel.project_id, sel.cluster_name)
       // Group by shape (namespace + plan + operation) to count executions
@@ -61,6 +62,7 @@ export default function Profiler({ clusters, config }) {
         r.yields = Math.max(r.yields, attr.numYields || 0)
       }
       setRows(Object.values(map).map(r => ({ ...r, avgDur: Math.round(r.totalDur / r.count) })))
+      setMeta({ limit: data.limit, truncated: !!data.truncated, total: (data.slowQueries || []).length })
     } catch (e) { setErr(e?.response?.data?.detail || e.message) }
     finally { setBusy(false) }
   }
@@ -98,6 +100,7 @@ export default function Profiler({ clusters, config }) {
       {err && <Banner variant="danger">{err}</Banner>}
       {!rows && !err && <Empty icon="🔍" title="Investigue as queries lentas" hint="Carregue as slow queries para ver shapes agrupados por execução, tipo leitura/escrita, plano, e rodar explain real." />}
       {rows && rows.length === 0 && <Banner variant="success">Nenhuma slow query em {sel.cluster_name}.</Banner>}
+      {rows && meta && meta.total > 0 && <div className="profiler-window" style={{ fontSize: 12, color: 'var(--text-muted)', margin: '8px 0' }}>Agrupando as {meta.total} entradas mais recentes do slow log{meta.truncated || meta.total >= (meta.limit || Infinity) ? ` (limite de ${meta.limit} linhas por carga)` : ''}.</div>}
       {rows && rows.length > 0 && (
         <>
           <KpiGrid>

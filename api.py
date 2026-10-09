@@ -364,11 +364,21 @@ def perf_advisor(project_id: str, cluster_name: str):
     return client.get_suggested_indexes(project_id, pid)
 
 
+SLOW_LOG_DEFAULT_LINES = 1000
+SLOW_LOG_MAX_LINES = 5000
+
+
 @app.get("/api/cluster/{project_id}/{cluster_name}/slow")
-def slow_queries(project_id: str, cluster_name: str):
+def slow_queries(project_id: str, cluster_name: str,
+                 limit: int = Query(SLOW_LOG_DEFAULT_LINES, ge=1, le=SLOW_LOG_MAX_LINES)):
+    # The raw slow log can reach 20k lines (~12 MB) on the demo cluster; the Profiler only
+    # groups shapes, so ask Atlas for the most recent `limit` lines and cap again here in case
+    # the API ignores nLogs.
     client = get_client()
     pid = _primary_or_404(client, project_id, cluster_name)
-    return client.get_slow_queries(project_id, pid)
+    data = client.get_slow_queries(project_id, pid, n_logs=limit) or {}
+    rows = data.get("slowQueries") or []
+    return {**data, "slowQueries": rows[:limit], "limit": limit, "truncated": len(rows) > limit}
 
 
 @app.get("/api/cluster/{project_id}/{cluster_name}/measurements")

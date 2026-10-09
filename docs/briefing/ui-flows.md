@@ -79,7 +79,8 @@ continua acessível — é a fonte usada pelo roteiro de demo do assistente.
 
 ### Consultas (Query Profiler)
 
-Slow queries reais (`/cluster/.../slow`) com `explain` ao lado
+Slow queries reais (`/cluster/.../slow`, últimas 1000 linhas do slow log por padrão,
+`?limit=` até 5000; a tela diz quantas entradas agrupou) com `explain` ao lado
 (`POST /explain`) mostrando `totalKeysExamined` e o plano — tempo sozinho diz
 que está lento, o `explain` diz por quê.
 

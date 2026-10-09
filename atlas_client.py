@@ -558,9 +558,13 @@ class AtlasClient:
             f"/groups/{project_id}/processes/{process_id}/performanceAdvisor/suggestedIndexes"
         )
 
-    def get_slow_queries(self, project_id, process_id):
+    def get_slow_queries(self, project_id, process_id, n_logs=None):
+        """`n_logs` maps to the Admin API's `nLogs` (max lines returned). None keeps
+        the Atlas default (up to 20000 lines, ~12 MB on a busy cluster)."""
+        params = {"nLogs": int(n_logs)} if n_logs else None
         return self._get(
-            f"/groups/{project_id}/processes/{process_id}/performanceAdvisor/slowQueryLogs"
+            f"/groups/{project_id}/processes/{process_id}/performanceAdvisor/slowQueryLogs",
+            params=params,
         )
 
     # ── Alerts ────────────────────────────────────────────────────────────

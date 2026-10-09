@@ -191,7 +191,7 @@ retry de rate-limit `_with_rate_limit_retry` (`atlas_client.py:19-45`, honra
 | `get_measurements` | `GET /processes/{id}/measurements` (CPU normalizada, memória, conexões, opcounters, rede, query targeting — janela 5min) | `atlas_client.py:314-403` | — |
 | `get_measurements_series` | idem, série de 24h (`period=P1D`, `granularity=PT1H` por padrão) | `atlas_client.py:406-458` | — |
 | `get_suggested_indexes` | `GET /processes/{id}/performanceAdvisor/suggestedIndexes` | `atlas_client.py:568-571` | — |
-| `get_slow_queries` | `GET /processes/{id}/performanceAdvisor/slowQueryLogs` | `atlas_client.py:573-576` | — |
+| `get_slow_queries` | `GET /processes/{id}/performanceAdvisor/slowQueryLogs?nLogs=N` | `atlas_client.py:561-568` | `/slow` pede `limit` linhas (padrão 1000, máx. 5000) e corta no servidor; o Health Score e o MCP seguem sem `nLogs` |
 | `get_open_alerts` | `GET /groups/{project_id}/alerts?status=OPEN` | `atlas_client.py:579-586` | — |
 | `get_pending_invoice` | `GET /orgs/{org_id}/invoices/pending` | `atlas_client.py:589-594` | — |
 
