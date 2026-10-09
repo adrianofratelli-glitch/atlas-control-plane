@@ -142,7 +142,7 @@ def _validate_atlas_path_params(request: Request):
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
-app = FastAPI(title="Torre Atlas Control Plane API", version="3.2.0",
+app = FastAPI(title="Torre Atlas Control Plane API", version="3.2.1",
               dependencies=[Depends(_validate_atlas_path_params)])
 
 
