@@ -1,6 +1,6 @@
 """Single entry point for every LLM call in Torre: the Grove gateway via pov-shared.
 
-Every model call goes through `_shared/grove_client` (pov-shared >= 0.1.5), which adds
+Every model call goes through `_shared/grove_client` (pov-shared >= 0.2.1), which adds
 retry/backoff on 429/5xx/timeout, a per-model circuit breaker, key failover and
 locked destination checks by default. Torre never builds an `anthropic` client itself.
 

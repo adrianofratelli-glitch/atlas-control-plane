@@ -164,7 +164,7 @@ cd frontend && npm run dev / npm run build
 python -m unittest discover -s tests -v     # sem credencial Atlas/Mongo
 python populate_workload.py                 # semeia carga pra Performance Advisor/Profiler
 python populate_profiler.py
-docker build -t torre . && docker run --env-file .env -p 18085:8080 torre
+docker build --build-context shared=../_shared -t torre . && docker run --env-file .env -p 18085:8080 torre   # pov-shared via contexto nomeado
 ```
 
 ## Coleta e demo — v3.1.0

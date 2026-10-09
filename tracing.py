@@ -19,7 +19,8 @@ try:  # pov-shared (../_shared): CPF/CNPJ/e-mail/telefone/cartão com dígito ve
 except Exception:  # noqa: BLE001 — sem pov-shared, usa a máscara local abaixo
     _shared_mask_pii = None
 
-# Cartão: o mask_pii do _shared (v0.1.5) não cobre; aqui só mascara número que passa no Luhn,
+# Cartão: o mask_pii do _shared cobre desde a v0.2.x; este Luhn local fica como defesa em profundidade
+# (e cobre o fallback sem pov-shared). Só mascara número que passa no Luhn,
 # para não apagar timestamps e métricas numéricas dos spans.
 _CARD = re.compile(r"(?<![\d.])\d(?:[ -]?\d){12,18}(?![\d.])")
 # Fallback local só quando pov-shared não está instalado (sem dígito verificador).
