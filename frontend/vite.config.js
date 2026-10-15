@@ -19,12 +19,12 @@ export default defineConfig({
       stream: require.resolve('stream-browserify'),
     },
   },
-  server: {
+  server: { host: '127.0.0.1',
     port: Number(WEB_PORT),
     strictPort: true,
     proxy: { '/api': `http://localhost:${API_PORT}` },
   },
-  preview: {
+  preview: { host: '127.0.0.1',
     port: Number(WEB_PORT),
     strictPort: true,
     proxy: { '/api': `http://localhost:${API_PORT}` },

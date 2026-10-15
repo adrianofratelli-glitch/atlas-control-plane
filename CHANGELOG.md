@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Atualiza dependências compatíveis e pisos de segurança; alinha metadados de versão entre aplicação e frontend.
+
 ## 3.2.1 (2026-10-09)
 
 - API: `/api/cluster/{project}/{cluster}/slow` asks Atlas for `nLogs` and caps the response (default 1000 lines, `?limit=` 1–5000) instead of returning the whole slow log (~12 MB on the demo cluster). The Profiler says how many entries it grouped.

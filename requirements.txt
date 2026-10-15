@@ -9,11 +9,11 @@ requests>=2.31,<3
 # (anthropic fica listado só pelos tipos usados nos testes; o cliente é o do pov-shared.)
 anthropic>=0.116,<1
 python-dotenv>=1.0,<2
-pymongo>=4.17,<5
+pymongo>=4.18.3,<5
 fpdf2>=2.7,<3
 
 # MCP protocol (supported 1.x SDK) and tool input validation
-mcp>=1.28,<2
+mcp>=1.30,<2
 jsonschema>=4.20,<5
 
 # Observability do loop do assistente (trace/generation/span). Fail-open sem
@@ -23,4 +23,8 @@ langfuse>=2,<3
 # Loop de ferramentas do assistente (assistant_graph.py) como StateGraph, com
 # checkpoint em MongoDB quando MONGODB_URI está configurada (MemorySaver senão).
 langgraph>=1,<2
-langgraph-checkpoint-mongodb>=0.5,<1
+langgraph-checkpoint-mongodb>=0.5.1,<1
+
+# Pisos de segurança para dependências transitivas.
+starlette>=1.3.1,<2
+urllib3>=2.8,<3
