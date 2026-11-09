@@ -1,5 +1,7 @@
 # Torre: Atlas Control Plane
 
+Mapa do código: [docs/MAPA_DO_CODIGO.md](docs/MAPA_DO_CODIGO.md)
+
 Version **3.2.0** · [Changelog](CHANGELOG.md)
 
 One screen for an entire fleet of MongoDB Atlas clusters, with a Claude assistant grounded in the real clusters rather than generic MongoDB trivia. Ask whether an M30 is enough and it answers from the p95 CPU of *your* cluster.
