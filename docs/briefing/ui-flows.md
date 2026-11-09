@@ -1,5 +1,7 @@
 # Torre — Atlas Control Plane — Interface, telas e fluxos
 
+> Números de linha podem ficar defasados após mudanças: a fonte atualizada é [MAPA_DO_CODIGO.md](../MAPA_DO_CODIGO.md).
+
 > Quem olha essa tela é DBA, SRE ou quem paga a fatura do Atlas. Arquitetura
 > geral em `architecture.md`, queries/índices em `queries.md`, comportamento
 > do agente em `agent-behavior.md`.

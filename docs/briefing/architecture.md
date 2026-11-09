@@ -1,5 +1,7 @@
 # Torre — Atlas Control Plane — Arquitetura
 
+> Números de linha podem ficar defasados após mudanças: a fonte atualizada é [MAPA_DO_CODIGO.md](../MAPA_DO_CODIGO.md).
+
 > Onde está o quê, e por quê. Consultas e índices MongoDB estão em `queries.md`,
 > telas e fluxos em `ui-flows.md`, comportamento do agente de IA em `agent-behavior.md`.
 

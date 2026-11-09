@@ -1,5 +1,7 @@
 # Torre — Atlas Control Plane — Queries, agregações e índices
 
+> Números de linha podem ficar defasados após mudanças: a fonte atualizada é [MAPA_DO_CODIGO.md](../MAPA_DO_CODIGO.md).
+
 > Inventário completo, extraído do código real (grep por `.aggregate(`, `.find(`,
 > `create_index`, chamadas HTTP à Atlas Admin API). Caminho é `arquivo:linha`.
 > Índices em `torre.chat_history` (memória do chat) e as queries direto no
@@ -32,11 +34,11 @@ pode ser chamado a cada boot sem custo.
 | Operação | Onde | O que faz | Exemplo |
 |---|---|---|---|
 | `insert_one` | `backend/chat_memory.py:117` (`new_conversation`) | Cria o documento de conversa vazio. | `{"cluster": "demo-cluster", "project_id": "…", "title": "Nova Conversa", "messages": [], "created_at": ..., "updated_at": ...}` |
-| `update_one` ($push + $slice) | `backend/chat_memory.py:129-146` (`add_message`) | Anexa mensagem ao array embutido e mantém no máximo `CHAT_MAX_MESSAGES` (default 100) via `$slice: -N`. Documento embutido = sem tabela de mensagens separada. | `{"$push": {"messages": {"$each": [msg], "$slice": -100}}, "$set": {"updated_at": now}}` |
+| `update_one` ($push + $slice) | `backend/chat_memory.py:121-146` (`add_message`) | Anexa mensagem ao array embutido e mantém no máximo `CHAT_MAX_MESSAGES` (default 100) via `$slice: -N`. Documento embutido = sem tabela de mensagens separada. | `{"$push": {"messages": {"$each": [msg], "$slice": -100}}, "$set": {"updated_at": now}}` |
 | `update_one` (auto-title) | `backend/chat_memory.py:138-141` | Só define o título com a primeira mensagem do usuário, condicionado a `title == "Nova Conversa"` (idempotente). | `{"_id": oid, "title": "Nova Conversa"}` → `$set: {"title": "Quais índices…"}` |
 | `find_one` (projeção) | `backend/chat_memory.py:151-154` (`load_messages`) | Lê uma conversa inteira num único read (array embutido). Projeta só `messages` e `cluster`. | — |
-| `aggregate` — pipeline de listagem | `backend/chat_memory.py:167-179` (`list_conversations`) | `$match` por cluster (opcional) → `$project` com `$size: "$messages"` pra contar mensagens sem carregar o array inteiro → `$sort` por `updated_at` desc → `$limit`. Usa o índice composto `cluster_updated_at_idx`. | ```js [{"$match": {"cluster": "demo-cluster"}}, {"$project": {"cluster":1,"project_id":1,"title":1,"updated_at":1,"created_at":1,"msg_count":{"$size":"$messages"}}}, {"$sort": {"updated_at": -1}}, {"$limit": 25}] ``` |
-| `find` + `$text` | `backend/chat_memory.py:192-197` (`search_conversations`) | Busca textual usando o índice `text_search`, ordenada por relevância (`$meta: "textScore"`). | `{"$text": {"$search": "índice performance"}}`, `.sort([("score", {"$meta": "textScore"})])` |
+| `aggregate` — pipeline de listagem | `backend/chat_memory.py:160-183` (`list_conversations`; `aggregate` na 182) | `$match` por cluster (opcional) → `$project` com `$size: "$messages"` pra contar mensagens sem carregar o array inteiro → `$sort` por `updated_at` desc → `$limit`. Usa o índice composto `cluster_updated_at_idx`. | ```js [{"$match": {"cluster": "demo-cluster"}}, {"$project": {"cluster":1,"project_id":1,"title":1,"updated_at":1,"created_at":1,"msg_count":{"$size":"$messages"}}}, {"$sort": {"updated_at": -1}}, {"$limit": 25}] ``` |
+| `find` + `$text` | `backend/chat_memory.py:186-198` (`search_conversations`) | Busca textual usando o índice `text_search`, ordenada por relevância (`$meta: "textScore"`). | `{"$text": {"$search": "índice performance"}}`, `.sort([("score", {"$meta": "textScore"})])` |
 | `delete_one` | `backend/chat_memory.py:203` | Exclui uma conversa pelo `_id`. | — |
 
 ### 1.3 Guarda de injeção
@@ -50,22 +52,22 @@ Coberto por teste (`tests/`).
 
 ## 2. Ação direta no cluster observado — criação de índice via UI (Índices → Otimização)
 
-### 2.1 `create_index_direct` — `backend/atlas_client.py:608-676`
+### 2.1 `create_index_direct` — `backend/atlas_client.py:600-665`
 
 Único ponto de escrita **direta via pymongo** fora do assistente operacional.
-Chamado por `POST /api/index` (`backend/api.py:641-649`), que já validou namespace e
+Chamado por `POST /api/index` (`backend/api.py:703-711`), que já validou namespace e
 chaves antes de chegar aqui.
 
 ```python
-name = mc[db_name][coll_name].create_index(keys)   # backend/atlas_client.py:648
+name = mc[db_name][coll_name].create_index(keys)   # backend/atlas_client.py:640
 ```
 
 - `keys` vem da lista `index_keys` do corpo da requisição, convertida
   campo→direção (`1`/`-1`/`"hashed"`/`"2dsphere"`/`"text"`).
-- Faz `collStats` antes de criar (`backend/atlas_client.py:636-642`) para avisar se a
+- Faz `collStats` antes de criar (`backend/atlas_client.py:625-637`) para avisar se a
   coleção tem mais de 100 mil documentos — build pode demorar.
 - Retry único em `OperationFailure` código `11602` (eleição de primário em
-  andamento) com espera de 3s (`backend/atlas_client.py:646-657`).
+  andamento) com espera de 3s (`backend/atlas_client.py:647-650`).
 - Por que existe: fecha o loop do Performance Advisor — a tela mostra a
   sugestão, o operador aprova o namespace/chaves na UI, e o índice é criado no
   cluster real, sem precisar abrir um shell.
@@ -86,7 +88,7 @@ lista fechada; no máximo 10 chaves por corpo. **Por que**: namespace vindo de
 UI indo direto pro driver é injeção esperando acontecer — coberto por teste,
 sem exigir cluster.
 
-### 2.3 `/api/explain` — `backend/api.py:612-638`
+### 2.3 `/api/explain` — `backend/api.py:672-700`
 
 Roda `explain("executionStats")` real via `mc[db_name].command("explain",
 {"find": coll, "filter": body.filter}, verbosity="executionStats")`
