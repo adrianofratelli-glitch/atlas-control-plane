@@ -88,6 +88,8 @@ Docker (nginx serves the build and proxies `/api`; `pov-shared` comes from a nam
 
 ```bash
 docker build --build-context shared=../_shared -t torre . && docker run --env-file .env -p 18085:8080 torre
+
+(`docker run --env-file` não remove aspas: no `.env` deste uso escreva `CHAVE=valor`, sem aspas. O contexto `_shared` ignora `.venv`, testes e docs via `_shared/.dockerignore`.)
 ```
 
 ### Reset the demo state
