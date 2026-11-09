@@ -11,7 +11,7 @@ Differences from populate_profiler.py:
   - Dedicated write threads (inserts + updates) to move CPU/IOPS for the
     Scale and FinOps tabs.
 
-Usage: python populate_workload.py [minutes]   (default 30)
+Usage: python scripts/populate_workload.py [minutes]   (default 30)
 """
 
 import os
@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
 URI = os.getenv("MONGODB_URI")
 

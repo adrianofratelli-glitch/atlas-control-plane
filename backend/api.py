@@ -4,7 +4,7 @@ Exposes the Python logic (atlas_client / ai_agent / chat_memory) as a REST API
 for the React + LeafyGreen frontend to consume via axios.
 
 Credentials ALWAYS come from the environment (.env) — never from the frontend.
-Run with:  uvicorn api:app --reload --port 8765
+Run with:  uvicorn backend.api:app --reload --port 8765
 """
 
 import hashlib
@@ -27,15 +27,15 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from cluster_insights import collect as collect_insights
-from metrics_cache import cache as metrics_cache
-import observability
-from atlas_client import (
+from backend.cluster_insights import collect as collect_insights
+from backend.metrics_cache import cache as metrics_cache
+from backend import observability
+from backend.atlas_client import (
     AtlasClient, create_index_direct,
     DEDICATED_TIERS, NVME_TIERS, TIER_PRICING_USD,
 )
-from ai_agent import generate_pdf_report
-from llm_gateway import gateway_configured
+from backend.ai_agent import generate_pdf_report
+from backend.llm_gateway import gateway_configured
 
 load_dotenv()
 observability.setup_logging()
@@ -724,7 +724,7 @@ class AnalyzeBody(BaseModel):
 
 async def _mcp_text_response(messages, project_id, cluster_name, *, mode="chat", conversation_id=None):
     """Compatibility text streams use the same MCP runtime as the assistant."""
-    from assistant_api import AssistantBody, assistant
+    from backend.assistant_api import AssistantBody, assistant
     body = AssistantBody(session_id=uuid4().hex, project_id=project_id or "",
                          cluster_name=cluster_name or "", messages=messages,
                          conversation_id=conversation_id, mode=mode)
@@ -794,7 +794,7 @@ def _ensure_chat_db(uri: str):
     """Ensures the history collection's indexes exist, once per process."""
     global _chat_db_ready
     if not _chat_db_ready:
-        from chat_memory import init_db
+        from backend.chat_memory import init_db
         init_db(uri)
         _chat_db_ready = True
 
@@ -860,7 +860,7 @@ _MONGO_DOWN = "Cluster do MONGODB_URI inacessível (pausado ou IP fora da access
 @app.get("/api/chat/conversations")
 def conversations(q: str = ""):
     uri = _mongo_or_400()
-    from chat_memory import list_conversations, search_conversations
+    from backend.chat_memory import list_conversations, search_conversations
     try:
         rows = search_conversations(uri, q) if q else list_conversations(uri, limit=25)
     except Exception:
@@ -874,7 +874,7 @@ def conversations(q: str = ""):
 @app.get("/api/chat/conversations/{conv_id}")
 def conversation_messages(conv_id: str):
     uri = _mongo_or_400()
-    from chat_memory import load_messages
+    from backend.chat_memory import load_messages
     try:
         msgs = load_messages(uri, conv_id)
     except ValueError as e:
@@ -890,7 +890,7 @@ def conversation_messages(conv_id: str):
 @app.delete("/api/chat/conversations/{conv_id}")
 def delete_conversation_ep(conv_id: str):
     uri = _mongo_or_400()
-    from chat_memory import delete_conversation
+    from backend.chat_memory import delete_conversation
     try:
         delete_conversation(uri, conv_id)
     except ValueError as e:
@@ -905,9 +905,9 @@ if __name__ == "__main__":
     import uvicorn
     # Local-only by design — holds real Atlas/Mongo credentials. Override via
     # API_HOST if you know what you're doing (see API_AUTH_TOKEN in .env.example).
-    uvicorn.run("api:app", host=os.getenv("API_HOST", "127.0.0.1"), port=8000, reload=True)
+    uvicorn.run("backend.api:app", host=os.getenv("API_HOST", "127.0.0.1"), port=8000, reload=True)
 
 
 # Operational MCP assistant (same authentication and observability middleware).
-from assistant_api import router as assistant_router
+from backend.assistant_api import router as assistant_router
 app.include_router(assistant_router)

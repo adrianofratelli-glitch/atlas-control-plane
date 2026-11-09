@@ -154,7 +154,7 @@ mudança na assinatura precisa ser replicada nas onze cópias e validada em
 
 ## Antes de apresentar
 
-- Rodar `populate_workload.py` e `populate_profiler.py` — senão Índices e
+- Rodar `scripts/populate_workload.py` e `scripts/populate_profiler.py` — senão Índices e
   Consultas ficam vazios.
 - Uma pergunta de aquecimento no chat, para pagar o cold start fora da demo.
 - Se for capturar tela: nomes reais de projeto/cluster identificam um

@@ -17,7 +17,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ["MONGODB_URI"] = ""  # sem checkpoint real neste arquivo — MemorySaver, mesmo se o shell tiver a URI exportada
 
-import assistant_graph  # noqa: E402
+from backend import assistant_graph  # noqa: E402
 
 
 class FakeStream:

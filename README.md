@@ -38,12 +38,12 @@ Also in the menu: **Performance Advisor** (suggested indexes, one-click creation
 
 ```mermaid
 flowchart LR
-    UI["React 18 + Vite + LeafyGreen"] -- "/api" --> API["FastAPI (api.py)"]
-    API --> AC["atlas_client.py<br/>Admin API v2, TTL caches, tier heuristic"]
-    API --> AI["assistant_runtime.py<br/>Claude tool loop over MCP + PDF"]
-    API --> CM["chat_memory.py"]
+    UI["React 18 + Vite + LeafyGreen"] -- "/api" --> API["FastAPI (backend/api.py)"]
+    API --> AC["backend/atlas_client.py<br/>Admin API v2, TTL caches, tier heuristic"]
+    API --> AI["backend/assistant_runtime.py<br/>Claude tool loop over MCP + PDF"]
+    API --> CM["backend/chat_memory.py"]
     AC --> ATLAS["Atlas Admin API v2 + Billing"]
-    AI --> GW["llm_gateway.py<br/>pov-shared grove_client"] --> CLAUDE["Claude via Grove gateway"]
+    AI --> GW["backend/llm_gateway.py<br/>pov-shared grove_client"] --> CLAUDE["Claude via Grove gateway"]
     CM --> DB[("Atlas cluster<br/>chat history")]
 ```
 
@@ -95,11 +95,11 @@ venv/bin/python scripts/reset_demo.py --db torre_test --workload-db banco_inter_
 ALLOW_DEMO_DB_WRITE=1 venv/bin/python scripts/reset_demo.py                             # the demo itself
 ```
 
-Idempotent. It recreates what Torre writes: `chat_history` (empty, with its five indexes and TTL), the LangGraph checkpoint collections, the local approvals in `.assistant-state/actions.sqlite3`, and only the `eventos_pix` documents that `populate_workload.py` tagged with `_torre_workload: true`. It refuses the demo databases without `ALLOW_DEMO_DB_WRITE=1`; `*_test` databases are always accepted. Atlas itself (clusters, metrics, Advisor, Profiler) and the pre-existing `banco_inter` dataset are read-only inputs and are never touched.
+Idempotent. It recreates what Torre writes: `chat_history` (empty, with its five indexes and TTL), the LangGraph checkpoint collections, the local approvals in `.assistant-state/actions.sqlite3`, and only the `eventos_pix` documents that `scripts/populate_workload.py` tagged with `_torre_workload: true`. It refuses the demo databases without `ALLOW_DEMO_DB_WRITE=1`; `*_test` databases are always accepted. Atlas itself (clusters, metrics, Advisor, Profiler) and the pre-existing `banco_inter` dataset are read-only inputs and are never touched.
 
 ### Load generators and the `$regex` exception
 
-Torre's app code never uses `$regex` (text search is `$search`; the assistant's data tools reject `$regex` outside `explain`). The three load generators are the documented exception: `populate_profiler.py`, `populate_workload.py` and `stress_readonly.py` run case-insensitive prefix regexes on purpose, because those queries cannot use index bounds and produce the slow, COLLSCAN-heavy entries the Query Profiler and Performance Advisor have to show. `populate_workload.py` only writes with `ALLOW_DEMO_DB_WRITE=1`.
+Torre's app code never uses `$regex` (text search is `$search`; the assistant's data tools reject `$regex` outside `explain`). The three load generators are the documented exception: `scripts/populate_profiler.py`, `scripts/populate_workload.py` and `scripts/stress_readonly.py` run case-insensitive prefix regexes on purpose, because those queries cannot use index bounds and produce the slow, COLLSCAN-heavy entries the Query Profiler and Performance Advisor have to show. `scripts/populate_workload.py` only writes with `ALLOW_DEMO_DB_WRITE=1`.
 
 ## FinOps por nó
 
@@ -108,7 +108,7 @@ FinOps compara CPU média dos nós em intervalos comuns de cinco minutos, p95 do
 Carga de validação somente leitura, com rampa de concorrência e limite de cinco segundos por consulta:
 
 ```bash
-venv/bin/python stress_readonly.py --minutes 6 --workers 6 --output /tmp/torre-stress.json
+venv/bin/python scripts/stress_readonly.py --minutes 6 --workers 6 --output /tmp/torre-stress.json
 ```
 
 O launcher inicia essa carga automaticamente por 6 minutos, com até 6 workers. Use `TORRE_STRESS=0 ./run_react.sh` para abrir sem carga, ou configure `STRESS_MINUTES` e `STRESS_WORKERS`. O encerramento da PoV interrompe a carga; um lock impede testes duplicados. Logs/resultados ficam em `.assistant-state/startup-stress.*`.
@@ -137,16 +137,19 @@ Set a long, random `API_AUTH_TOKEN`; it protects the API routes and metrics whil
 ## Layout
 
 ```
-api.py              FastAPI routes, middleware, authentication
-atlas_client.py     Admin API v2 client + scaling recommendations
-llm_gateway.py      the only LLM entry point (Grove via pov-shared, fail closed)
-assistant_*.py      MCP tool loop (LangGraph), tools, approvals, reports
-ai_agent.py         model settings, token accounting, PDF export
-tracing.py          Langfuse traces, masked before creation (fail-open)
-scripts/            reset_demo.py
-chat_memory.py      chat history in Atlas
-observability.py    structured logs + /api/metrics
+backend/            runtime Python (pacote importavel: uvicorn backend.api:app)
+  api.py            FastAPI routes, middleware, authentication
+  atlas_client.py   Admin API v2 client + scaling recommendations
+  llm_gateway.py    the only LLM entry point (Grove via pov-shared, fail closed)
+  assistant_*.py    MCP tool loop (LangGraph), tools, approvals, reports
+  ai_agent.py       model settings, token accounting, PDF export
+  tracing.py        Langfuse traces, masked before creation (fail-open)
+  chat_memory.py    chat history in Atlas
+  observability.py  structured logs + /api/metrics
+  cluster_insights.py, metrics_cache.py, torre_mcp_server.py
+scripts/            reset_demo.py, populate_workload.py, populate_profiler.py, stress_readonly.py
 frontend/src/pages/ one component per page
+tests/              offline unittest suite
 ```
 
 ## Credits

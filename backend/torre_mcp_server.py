@@ -9,9 +9,9 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, ToolAnnotations, TextContent, CallToolResult
 from starlette.concurrency import run_in_threadpool
-from assistant_tools import TOOLS, ClusterTools
+from backend.assistant_tools import TOOLS, ClusterTools
 
-load_dotenv(Path(__file__).with_name('.env'))
+load_dotenv(Path(__file__).resolve().parents[1] / '.env')
 server = Server("torre_mcp")
 
 
@@ -60,7 +60,7 @@ async def call_tool(name, arguments):
 
 async def main():
     if len(sys.argv) != 3:
-        raise SystemExit("Uso: torre_mcp_server.py PROJECT_ID CLUSTER_NAME")
+        raise SystemExit("Uso: python -m backend.torre_mcp_server PROJECT_ID CLUSTER_NAME")
     async with stdio_server() as (read, write):
         await server.run(read, write, server.create_initialization_options())
 

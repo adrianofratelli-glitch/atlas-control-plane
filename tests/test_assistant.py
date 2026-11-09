@@ -12,11 +12,11 @@ os.environ['MONGODB_URI'] = ''
 from unittest.mock import patch, MagicMock
 from bson import ObjectId
 from fastapi.testclient import TestClient
-from assistant_tools import ClusterTools, TOOLS, validate_pipeline
-from assistant_actions import ActionStore
-from torre_mcp_server import bounded_result
-import api
-import assistant_api
+from backend.assistant_tools import ClusterTools, TOOLS, validate_pipeline
+from backend.assistant_actions import ActionStore
+from backend.torre_mcp_server import bounded_result
+from backend import api
+from backend import assistant_api
 
 
 class ToolTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class ToolTests(unittest.TestCase):
 
     def test_all_advisor_indexes_are_retrievable(self):
         indexes = [{'index': [{'field'+str(i): 1}]} for i in range(107)]
-        with patch('api.get_client') as get:
+        with patch('backend.api.get_client') as get:
             get.return_value.get_primary.return_value = 'primary'
             get.return_value.get_suggested_indexes.return_value = {'suggestedIndexes': indexes}
             rows, offset = [], 0
@@ -38,7 +38,7 @@ class ToolTests(unittest.TestCase):
             self.assertEqual(get.return_value.get_suggested_indexes.call_count, 6)
 
     def test_advisor_errors_are_not_empty_recommendations(self):
-        with patch('api.get_client') as get:
+        with patch('backend.api.get_client') as get:
             get.return_value.get_primary.return_value = 'primary'
             for data in [{'error': 'forbidden'}, {}]:
                 get.return_value.get_suggested_indexes.return_value = data
@@ -86,7 +86,7 @@ class ToolTests(unittest.TestCase):
         coll.delete_many.assert_not_called()
 
     def test_identity_is_checked_again_at_execution(self):
-        with patch('api._assert_uri_targets', side_effect=api.HTTPException(409, 'other cluster')), patch.dict('os.environ', {'MONGODB_URI': 'configured'}), patch('api._mongo') as mongo:
+        with patch('backend.api._assert_uri_targets', side_effect=api.HTTPException(409, 'other cluster')), patch.dict('os.environ', {'MONGODB_URI': 'configured'}), patch('backend.api._mongo') as mongo:
             with self.assertRaises(api.HTTPException): self.tools.execute('mongo_drop_collection', {'namespace': 'demo.orders'})
             mongo.assert_not_called()
 
@@ -133,7 +133,7 @@ class ApprovalTests(unittest.TestCase):
 
     def test_api_rejects_modified_arguments_and_does_not_replay(self):
         body = {'session_id': 's'*32, 'project_id': 'p', 'cluster_name': 'c', 'decision': 'approve'}
-        with patch.object(assistant_api, 'store', self.store), patch.object(api, '_API_AUTH_TOKEN', ''), patch('assistant_api.ClusterTools.execute', return_value={'deleted_count': 1}) as execute:
+        with patch.object(assistant_api, 'store', self.store), patch.object(api, '_API_AUTH_TOKEN', ''), patch('backend.assistant_api.ClusterTools.execute', return_value={'deleted_count': 1}) as execute:
             client = TestClient(api.app)
             url = '/api/assistant/actions/' + self.action['id']
             self.assertEqual(client.post(url, json={**body, 'arguments': {}}).status_code, 422)
@@ -143,7 +143,7 @@ class ApprovalTests(unittest.TestCase):
 
     def test_unknown_write_result_is_not_retried(self):
         body = assistant_api.DecisionBody(session_id='s'*32, project_id='p', cluster_name='c', decision='approve')
-        with patch.object(assistant_api, 'store', self.store), patch('assistant_api.ClusterTools.execute', side_effect=TimeoutError) as execute:
+        with patch.object(assistant_api, 'store', self.store), patch('backend.assistant_api.ClusterTools.execute', side_effect=TimeoutError) as execute:
             self.assertEqual(assistant_api.decide(self.action['id'], body)['state'], 'unknown')
             self.assertEqual(assistant_api.decide(self.action['id'], body)['state'], 'unknown')
             execute.assert_called_once()
@@ -160,7 +160,7 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
     async def test_real_stdio_handshake_catalog_and_read_only_call(self):
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
-        params = StdioServerParameters(command=sys.executable, args=[str(Path(__file__).resolve().parents[1] / 'torre_mcp_server.py'), 'test', 'test'])
+        params = StdioServerParameters(command=sys.executable, args=['-m', 'backend.torre_mcp_server', 'test', 'test'], cwd=str(Path(__file__).resolve().parents[1]))
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
@@ -181,7 +181,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         from unittest.mock import AsyncMock
         from anthropic.types import Message as ModelMessage
         from mcp.types import CallToolResult, TextContent, Tool
-        import assistant_runtime
+        from backend import assistant_runtime
         proposal = {'proposal': True, 'operation': 'mongo_create_index', 'arguments': {'namespace': 'demo.orders', 'keys': [{'status': 1}]}, 'details': {'operation': 'Criar índice', 'cluster': 'c'}, 'frozen_ids': None, 'destructive': False}
         messages = [ModelMessage.model_validate({'id': 'm1', 'type': 'message', 'role': 'assistant', 'model': 'test', 'content': [{'type': 'tool_use', 'id': 't1', 'name': 'mongo_create_index', 'input': proposal['arguments']}], 'stop_reason': 'tool_use', 'usage': {'input_tokens': 1, 'output_tokens': 1}}),
                     ModelMessage.model_validate({'id': 'm2', 'type': 'message', 'role': 'assistant', 'model': 'test', 'content': [{'type': 'text', 'text': 'Ação preparada; aprove no cartão.'}], 'stop_reason': 'end_turn', 'usage': {'input_tokens': 1, 'output_tokens': 1}})]
@@ -219,7 +219,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn(actions[0]['action']['id'], tool_result['content'])
 
     async def test_closing_generator_cleans_up_real_mcp_transport(self):
-        import assistant_runtime
+        from backend import assistant_runtime
         with tempfile.TemporaryDirectory() as directory, patch.object(assistant_runtime, 'store', ActionStore(Path(directory) / 'actions.db')):
             stream = assistant_runtime.run_assistant([{'role': 'user', 'content': 'oi'}], 'p', 'c', 's'*32, client=MagicMock())
             self.assertEqual((await anext(stream))['type'], 'connected')

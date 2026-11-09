@@ -30,12 +30,12 @@ os.environ["MONGODB_URI"] = ""  # checkpoints em memória: testes nunca escrevem
 import requests  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-import api  # noqa: E402
-import assistant_runtime  # noqa: E402
-import llm_gateway  # noqa: E402
-import tracing  # noqa: E402
-from assistant_actions import ActionStore  # noqa: E402
-from assistant_tools import TOOLS, ClusterTools  # noqa: E402
+from backend import api  # noqa: E402
+from backend import assistant_runtime  # noqa: E402
+from backend import llm_gateway  # noqa: E402
+from backend import tracing  # noqa: E402
+from backend.assistant_actions import ActionStore  # noqa: E402
+from backend.assistant_tools import TOOLS, ClusterTools  # noqa: E402
 
 try:
     import grove_client  # noqa: F401
@@ -49,7 +49,7 @@ _saved_tracing_client = None
 def setUpModule():
     """Sem rede: Langfuse desligado e grafo reconstruído com MemorySaver."""
     global _saved_tracing_client
-    import assistant_graph
+    from backend import assistant_graph
     _saved_tracing_client = tracing._client
     tracing._client = False
     assistant_graph._GRAPH = None
@@ -59,7 +59,7 @@ def tearDownModule():
     tracing._client = _saved_tracing_client
 
 
-APP_MODULES = [p for p in ROOT.glob("*.py")] + list((ROOT / "scripts").glob("*.py"))
+APP_MODULES = list((ROOT / "backend").glob("*.py")) + list((ROOT / "scripts").glob("*.py"))
 LOAD_GENERATORS = {"populate_profiler.py", "populate_workload.py", "stress_readonly.py"}
 GROVE_ENV = {"GROVE_BASE_URL": "https://gateway.example.mongodb.com/anthropic", "GROVE_API_KEY": "k-test"}
 
@@ -210,7 +210,7 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
 class MultiTurnTests(unittest.IsolatedAsyncioTestCase):
     async def test_second_turn_of_same_session_still_runs_requested_tools(self):
         """Regressão P1: o `outcome` do turno anterior vinha do checkpoint e encerrava o turno 2."""
-        import assistant_graph
+        from backend import assistant_graph
         from mcp.types import CallToolResult, TextContent
         assistant_graph._GRAPH = None
 
@@ -355,7 +355,7 @@ class ToolAbuseTests(unittest.IsolatedAsyncioTestCase):
     def test_mongo_databases_hides_internal_state(self):
         mc = MagicMock()
         mc.list_database_names.return_value = ["admin", "banco_inter", "torre", "local"]
-        with patch.object(self.tools, "mongo", return_value=mc), patch("api._assert_uri_targets"):
+        with patch.object(self.tools, "mongo", return_value=mc), patch("backend.api._assert_uri_targets"):
             self.assertEqual(self.tools.call("mongo_databases", {})["items"], ["banco_inter"])
 
     def test_js_and_regex_operators_are_blocked_in_data_tools(self):
@@ -373,7 +373,7 @@ class ToolAbuseTests(unittest.IsolatedAsyncioTestCase):
         client = MagicMock()
         client.get_cluster.return_value = {"name": "c", "stateName": "IDLE", "connectionStrings": {"standardSrv": PII["uri"]},
                                            "mongoURI": PII["uri"]}
-        with patch("api.get_client", return_value=client):
+        with patch("backend.api.get_client", return_value=client):
             out = json.dumps(self.tools.call("atlas_cluster", {}))
         self.assertNotIn("mongodb", out)
 
@@ -486,8 +486,8 @@ class HostileEndpointTests(unittest.TestCase):
     def test_explain_errors_are_sanitized_and_bounded(self):
         mc = MagicMock()
         mc.__getitem__.return_value.command.side_effect = Exception("connection to h-1.internal:27017 refused")
-        with patch.dict(os.environ, {"MONGODB_URI": "mongodb://x"}), patch("api._assert_uri_targets"), \
-                patch("api._mongo", return_value=mc):
+        with patch.dict(os.environ, {"MONGODB_URI": "mongodb://x"}), patch("backend.api._assert_uri_targets"), \
+                patch("backend.api._mongo", return_value=mc):
             r = self.client.post("/api/explain", json={"namespace": "banco_inter.fatura", "filter": {"a": 1},
                                                        "project_id": "abc123", "cluster_name": "c1"})
         self.assertEqual(r.status_code, 502)
@@ -495,7 +495,7 @@ class HostileEndpointTests(unittest.TestCase):
         self.assertEqual(mc.__getitem__.return_value.command.call_args.args[1]["maxTimeMS"], 10000)
 
     def test_explain_rejects_js_operators_and_injected_ids(self):
-        with patch.dict(os.environ, {"MONGODB_URI": "mongodb://x"}), patch("api._assert_uri_targets"):
+        with patch.dict(os.environ, {"MONGODB_URI": "mongodb://x"}), patch("backend.api._assert_uri_targets"):
             r = self.client.post("/api/explain", json={"namespace": "banco_inter.fatura", "filter": {"$where": "1"},
                                                        "project_id": "abc123", "cluster_name": "c1"})
             self.assertEqual(r.status_code, 400)
@@ -541,14 +541,14 @@ class OpsSafetyTests(unittest.TestCase):
     def test_second_stress_run_is_refused_by_lock(self):
         import fcntl
         import io
-        import stress_readonly
+        from scripts import stress_readonly
         lock_path = ROOT / ".assistant-state" / "stress.lock"
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         with lock_path.open("w") as held:
             fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
             out = io.StringIO()
             with patch.object(sys, "argv", ["stress_readonly.py", "--minutes", "1"]), patch("sys.stdout", out), \
-                    patch("stress_readonly.MongoClient", side_effect=AssertionError("não deveria conectar")):
+                    patch("scripts.stress_readonly.MongoClient", side_effect=AssertionError("não deveria conectar")):
                 stress_readonly.main()
             self.assertIn("já está ativo", out.getvalue())
 
@@ -557,7 +557,7 @@ class OpsSafetyTests(unittest.TestCase):
                      if p.name not in LOAD_GENERATORS and re.search(r"['\"]\$regex['\"]\s*:", p.read_text())]
         self.assertEqual(offenders, [])
         for name in LOAD_GENERATORS:
-            self.assertIn("EXCEÇÃO EXPLÍCITA", (ROOT / name).read_text(), name)
+            self.assertIn("EXCEÇÃO EXPLÍCITA", (ROOT / "scripts" / name).read_text(), name)
 
 
 if __name__ == "__main__":

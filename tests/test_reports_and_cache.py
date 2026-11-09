@@ -5,8 +5,8 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-from metrics_cache import MetricsCache
-import assistant_report
+from backend.metrics_cache import MetricsCache
+from backend import assistant_report
 
 
 class Stream:

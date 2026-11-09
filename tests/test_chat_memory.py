@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from chat_memory import _oid
+from backend.chat_memory import _oid
 from bson import ObjectId
 
 

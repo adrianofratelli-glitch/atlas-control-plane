@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
-from atlas_client import AtlasClient
-from cluster_insights import summarize, stats
+from backend.atlas_client import AtlasClient
+from backend.cluster_insights import summarize, stats
 
 
 def node(name, cpu, points=288):
@@ -66,8 +66,8 @@ class StreamAndBillingTests(unittest.TestCase):
     def test_model_limit_has_error_and_terminal_done(self):
         import json
         import os
-        import api
-        import assistant_api
+        from backend import api
+        from backend import assistant_api
         from fastapi.testclient import TestClient
         async def limited(*args, **kwargs):
             yield {"type": "text", "text": "partial"}
@@ -83,7 +83,7 @@ class StreamAndBillingTests(unittest.TestCase):
         self.assertEqual(events[-2]['message'], 'limite de tamanho')
 
     def test_missing_billing_org_is_not_zero_invoice(self):
-        import api
+        from backend import api
         from unittest.mock import MagicMock
         client = MagicMock(org_id='')
         with patch.object(api, 'get_client', return_value=client):
@@ -93,7 +93,7 @@ class StreamAndBillingTests(unittest.TestCase):
 
 class ExplainTests(unittest.TestCase):
     def test_explain_preserves_real_sort_and_limit(self):
-        from assistant_tools import ClusterTools
+        from backend.assistant_tools import ClusterTools
         from unittest.mock import MagicMock
         tools = ClusterTools('p', 'inter')
         mongo = MagicMock()

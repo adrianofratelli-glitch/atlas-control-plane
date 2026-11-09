@@ -11,7 +11,7 @@ import time
 
 class ActionStore:
     def __init__(self, path=None):
-        self.path = Path(path or os.getenv("TORRE_ACTION_DB", str(Path(__file__).parent / ".assistant-state" / "actions.sqlite3")))
+        self.path = Path(path or os.getenv("TORRE_ACTION_DB", str(Path(__file__).resolve().parents[1] / ".assistant-state" / "actions.sqlite3")))
 
     @contextmanager
     def connect(self):

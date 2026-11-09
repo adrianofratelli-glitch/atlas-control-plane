@@ -11,7 +11,7 @@ os.environ.setdefault("ATLAS_PUBLIC_KEY", "")
 os.environ.setdefault("ATLAS_PRIVATE_KEY", "")
 
 from fastapi import HTTPException
-import api
+from backend import api
 
 
 class TestAssertFilterIsSafe(unittest.TestCase):

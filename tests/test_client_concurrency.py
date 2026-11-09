@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017")
 os.environ.setdefault("MONGO_URI", "mongodb://localhost:27017")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import chat_memory as module
+from backend import chat_memory as module
 
 
 class ClientConcurrencyTests(unittest.TestCase):
@@ -39,7 +39,7 @@ class ClientConcurrencyTests(unittest.TestCase):
 
 class AtlasClientConcurrencyTests(unittest.TestCase):
     def test_atlas_client_cold_start_constructs_one_session(self):
-        import api
+        from backend import api
         barrier = Barrier(8)
         shared = MagicMock()
         def construct(*args):

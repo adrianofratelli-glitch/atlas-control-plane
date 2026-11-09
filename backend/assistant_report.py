@@ -3,12 +3,12 @@ import asyncio
 import json
 import time
 from uuid import uuid4
-from ai_agent import MODEL, _track_usage
+from backend.ai_agent import MODEL, _track_usage
 
 TOOL_TIMEOUT = 45
 MODEL_TIMEOUT = 75
-from assistant_tools import TOOLS
-import tracing
+from backend.assistant_tools import TOOLS
+from backend import tracing
 
 
 async def run_report(*, mcp, client, system, request_text, emit, lf_trace=None):

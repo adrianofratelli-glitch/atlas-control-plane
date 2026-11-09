@@ -55,7 +55,7 @@ def assert_writable(db_name: str, *, demo_names: set[str]) -> None:
 
 def reset(uri: str, db_name: str, workload_db: str, action_db: Path) -> dict:
     from pymongo import MongoClient
-    import chat_memory
+    from backend import chat_memory
 
     client = MongoClient(uri, serverSelectionTimeoutMS=10000)
     db = client[db_name]

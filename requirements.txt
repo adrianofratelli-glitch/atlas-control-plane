@@ -17,10 +17,10 @@ mcp>=1.30,<2
 jsonschema>=4.20,<5
 
 # Observability do loop do assistente (trace/generation/span). Fail-open sem
-# chaves configuradas — ver tracing.py. Pin <3: SDK v4 troca a API usada aqui.
+# chaves configuradas — ver backend/tracing.py. Pin <3: SDK v4 troca a API usada aqui.
 langfuse>=2,<3
 
-# Loop de ferramentas do assistente (assistant_graph.py) como StateGraph, com
+# Loop de ferramentas do assistente (backend/assistant_graph.py) como StateGraph, com
 # checkpoint em MongoDB quando MONGODB_URI está configurada (MemorySaver senão).
 langgraph>=1,<2
 langgraph-checkpoint-mongodb>=0.5.1,<1

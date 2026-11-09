@@ -7,11 +7,11 @@ from pathlib import Path
 import sys
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from assistant_actions import store
-from assistant_graph import run_loop
-from assistant_tools import TOOLS
-import llm_gateway
-import tracing
+from backend.assistant_actions import store
+from backend.assistant_graph import run_loop
+from backend.assistant_tools import TOOLS
+from backend import llm_gateway
+from backend import tracing
 
 SYSTEM = """Você é o Assistente Torre. Ajude uma pessoa de negócio a operar MongoDB Atlas em português, sem exigir que ela conheça MQL.
 Use as ferramentas MCP para obter dados reais ANTES de responder sobre bancos, coleções, índices, consultas ou métricas. Não diga que não pode consultar algo se há ferramenta disponível. Descubra bancos, coleções e campos quando necessário; não invente nomes.
@@ -32,8 +32,8 @@ def encode(event):
 async def _produce(messages, project_id, cluster_name, session_id, client=None, emit=None, mode="chat"):
     """Each turn owns/cleans up its MCP child and Grove gateway client."""
     parameters = StdioServerParameters(command=sys.executable,
-        args=[str(Path(__file__).with_name("torre_mcp_server.py")), project_id or "", cluster_name or ""],
-        cwd=str(Path(__file__).parent),
+        args=["-m", "backend.torre_mcp_server", project_id or "", cluster_name or ""],
+        cwd=str(Path(__file__).resolve().parents[1]),
         env={k: v for k, v in os.environ.items() if k in {
             "PATH", "HOME", "LANG", "ATLAS_PUBLIC_KEY", "ATLAS_PRIVATE_KEY", "ATLAS_ORG_ID", "ATLAS_PROJECT_ID", "MONGODB_URI", "MONGODB_DB"}})
     history = [dict(m) for m in messages[-16:]]
@@ -67,7 +67,7 @@ async def _produce(messages, project_id, cluster_name, session_id, client=None, 
                 if trace_url:
                     await emit({"type": "trace_url", "url": trace_url})
                 if mode == "report":
-                    from assistant_report import run_report
+                    from backend.assistant_report import run_report
                     full_response = await run_report(mcp=mcp, client=client, system=system,
                         request_text=last_user_text, emit=emit, lf_trace=lf_trace)
                 else:

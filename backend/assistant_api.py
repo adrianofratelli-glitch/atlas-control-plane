@@ -8,10 +8,10 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
-from assistant_actions import store
-from assistant_tools import ClusterTools, TOOLS, serializable
-from assistant_runtime import run_assistant, encode
-from llm_gateway import GatewayNotConfigured
+from backend.assistant_actions import store
+from backend.assistant_tools import ClusterTools, TOOLS, serializable
+from backend.assistant_runtime import run_assistant, encode
+from backend.llm_gateway import GatewayNotConfigured
 
 router = APIRouter(prefix="/api/assistant")
 logger = logging.getLogger("torre.assistant")
@@ -50,8 +50,8 @@ def save_user(body):
     uri = os.getenv("MONGODB_URI", "")
     if not uri:
         return None
-    import api
-    from chat_memory import _get_collection, _oid, new_conversation, add_message
+    from backend import api
+    from backend.chat_memory import _get_collection, _oid, new_conversation, add_message
     if body.conversation_id:
         doc = _get_collection(uri).find_one({"_id": _oid(body.conversation_id)}, {"project_id": 1, "cluster": 1})
         if not doc or doc.get("project_id") != body.project_id or doc.get("cluster", "") != body.cluster_name:
@@ -108,7 +108,7 @@ async def assistant(body: AssistantBody):
         finally:
             if conv_id and text:
                 try:
-                    from chat_memory import add_message
+                    from backend.chat_memory import add_message
                     await asyncio.to_thread(add_message, os.getenv("MONGODB_URI", ""), conv_id, "assistant", "".join(text))
                 except Exception:
                     logger.warning("Não foi possível salvar resposta no histórico.")
@@ -132,7 +132,7 @@ def decide(action_id: str, body: DecisionBody):
             result = ClusterTools(row["project"], row["cluster"]).execute(payload["operation"], payload["arguments"], payload.get("frozen_ids"))
             store.finish(action_id, "completed", serializable(result))
             # The legacy summary cache must not outlive an approved operation.
-            import api
+            from backend import api
             api._chat_snapshots.pop((row["project"], row["cluster"]), None)
         except Exception:
             # A write timeout may have taken effect. Never replay automatically.

@@ -23,10 +23,10 @@ from langgraph.checkpoint.mongodb import MongoDBSaver
 from langgraph.graph import END, StateGraph
 from pymongo import MongoClient as SyncMongoClient
 
-import tracing
-from ai_agent import MODEL, _track_usage
-from llm_gateway import resolve_model
-from assistant_tools import TOOLS
+from backend import tracing
+from backend.ai_agent import MODEL, _track_usage
+from backend.llm_gateway import resolve_model
+from backend.assistant_tools import TOOLS
 
 MAX_ITERATIONS = 12
 MAX_TOOL_CALLS = 40

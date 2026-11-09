@@ -17,34 +17,34 @@ Admin API — não um resumo pré-mastigado.
 | Camada | Escolha | Onde |
 |---|---|---|
 | Frontend | React 18 + Vite + LeafyGreen (design system MongoDB) | `frontend/src/` |
-| Backend | FastAPI (Python) | `api.py` |
-| Cluster observado | Atlas Admin API v2 (`HTTPDigestAuth`) | `atlas_client.py` |
-| IA — análise/chat | Claude via gateway configurado, evidências pelo MCP real | `assistant_runtime.py`, `assistant_graph.py`, `assistant_report.py` |
-| PDF | Renderização local do texto recebido | `ai_agent.py` |
-| IA — assistente operacional | Claude via gateway Grove (`llm_gateway.py` → `_shared/grove_client`) + MCP (Model Context Protocol) sobre stdio | `assistant_runtime.py`, `torre_mcp_server.py`, `assistant_tools.py` |
-| Memória do chat | MongoDB Atlas via `pymongo` | `chat_memory.py` |
-| Aprovações do assistente | SQLite local, single-host | `assistant_actions.py` (`.assistant-state/actions.sqlite3`) |
-| Observability opcional | Langfuse (self-host, fail-open) | `tracing.py` |
-| Log/métricas em processo | logging estruturado + `GET /api/metrics` | `observability.py` |
+| Backend | FastAPI (Python) | `backend/api.py` |
+| Cluster observado | Atlas Admin API v2 (`HTTPDigestAuth`) | `backend/atlas_client.py` |
+| IA — análise/chat | Claude via gateway configurado, evidências pelo MCP real | `backend/assistant_runtime.py`, `backend/assistant_graph.py`, `backend/assistant_report.py` |
+| PDF | Renderização local do texto recebido | `backend/ai_agent.py` |
+| IA — assistente operacional | Claude via gateway Grove (`backend/llm_gateway.py` → `_shared/grove_client`) + MCP (Model Context Protocol) sobre stdio | `backend/assistant_runtime.py`, `backend/torre_mcp_server.py`, `backend/assistant_tools.py` |
+| Memória do chat | MongoDB Atlas via `pymongo` | `backend/chat_memory.py` |
+| Aprovações do assistente | SQLite local, single-host | `backend/assistant_actions.py` (`.assistant-state/actions.sqlite3`) |
+| Observability opcional | Langfuse (self-host, fail-open) | `backend/tracing.py` |
+| Log/métricas em processo | logging estruturado + `GET /api/metrics` | `backend/observability.py` |
 
-## Componentes (módulos Python planos na raiz, sem pacote aninhado)
+## Componentes (pacote `backend/` e utilitários em `scripts/`)
 
 | Arquivo | Papel |
 |---|---|
-| `api.py` | backend FastAPI, todas as rotas `/api/...`, middleware de request-id e métricas, auth opcional por bearer token |
-| `atlas_client.py` | cliente da Atlas Admin API v2 + heurística determinística de recomendação de escala |
-| `ai_agent.py` | utilitários de uso do modelo, renderização de PDF e helpers legados; rotas da UI usam o runtime MCP |
-| `chat_memory.py` | histórico de chat persistido no Atlas via pymongo (ver `queries.md`) |
-| `assistant_api.py` | rotas `/api/assistant/...` — conversa e aprovação/execução de ações |
-| `assistant_runtime.py` | loop de ferramentas Claude ↔ MCP do assistente operacional (ver `agent-behavior.md`) |
-| `llm_gateway.py` | único ponto de entrada de LLM: `AsyncGroveClient` do `_shared`, falha fechado sem Grove |
+| `backend/api.py` | backend FastAPI, todas as rotas `/api/...`, middleware de request-id e métricas, auth opcional por bearer token |
+| `backend/atlas_client.py` | cliente da Atlas Admin API v2 + heurística determinística de recomendação de escala |
+| `backend/ai_agent.py` | utilitários de uso do modelo, renderização de PDF e helpers legados; rotas da UI usam o runtime MCP |
+| `backend/chat_memory.py` | histórico de chat persistido no Atlas via pymongo (ver `queries.md`) |
+| `backend/assistant_api.py` | rotas `/api/assistant/...` — conversa e aprovação/execução de ações |
+| `backend/assistant_runtime.py` | loop de ferramentas Claude ↔ MCP do assistente operacional (ver `agent-behavior.md`) |
+| `backend/llm_gateway.py` | único ponto de entrada de LLM: `AsyncGroveClient` do `_shared`, falha fechado sem Grove |
 | `scripts/reset_demo.py` | reset idempotente do estado da Torre, com guarda `ALLOW_DEMO_DB_WRITE` |
-| `assistant_tools.py` | catálogo das 29 ferramentas MCP, validação de entrada, leitura e preparação de escrita |
-| `assistant_actions.py` | `ActionStore` — aprovações duráveis, single-use, em SQLite |
-| `torre_mcp_server.py` | servidor MCP sobre stdio; expõe só leitura + preparação, nunca execução |
-| `observability.py` | log estruturado (`LOG_JSON=1`) e métricas em processo |
-| `tracing.py` | integração Langfuse fail-open |
-| `populate_workload.py`, `populate_profiler.py` | seeds standalone que geram carga real (find/aggregate) pra Performance Advisor e Query Profiler não ficarem vazios na demo |
+| `backend/assistant_tools.py` | catálogo das 29 ferramentas MCP, validação de entrada, leitura e preparação de escrita |
+| `backend/assistant_actions.py` | `ActionStore` — aprovações duráveis, single-use, em SQLite |
+| `backend/torre_mcp_server.py` | servidor MCP sobre stdio; expõe só leitura + preparação, nunca execução |
+| `backend/observability.py` | log estruturado (`LOG_JSON=1`) e métricas em processo |
+| `backend/tracing.py` | integração Langfuse fail-open |
+| `scripts/populate_workload.py`, `scripts/populate_profiler.py` | seeds standalone que geram carga real (find/aggregate) pra Performance Advisor e Query Profiler não ficarem vazios na demo |
 
 ## Fluxo de dados
 
@@ -52,7 +52,7 @@ Admin API — não um resumo pré-mastigado.
 
 ```
 React (frontend/src/pages/*.jsx)
-  --axios /api--> FastAPI (api.py)
+  --axios /api--> FastAPI (backend/api.py)
       --> atlas_client.AtlasClient --> Atlas Admin API v2
       (heurística de escala roda em atlas_client.recommend_scaling, testada com unittest)
   <-- JSON --
@@ -72,9 +72,9 @@ React --fetch NDJSON--> /api/assistant (mode=report)
 ### Assistente operacional (aba Assistente)
 
 ```
-React --fetch NDJSON--> /api/assistant (assistant_api.py)
+React --fetch NDJSON--> /api/assistant (backend/assistant_api.py)
   --> assistant_runtime._produce (loop de tool-use, Claude via Grove)
-      --> MCP client (stdio) --> torre_mcp_server.py --> assistant_tools.ClusterTools
+      --> MCP client (stdio) --> backend/torre_mcp_server.py --> assistant_tools.ClusterTools
               --> leitura: Atlas Admin API / pymongo
               --> escrita: só PREPARA (proposal), nunca executa
   --> aprovação do usuário no cartão --> POST /api/assistant/actions/{id}
@@ -88,7 +88,7 @@ Detalhado nó a nó em `agent-behavior.md`.
 
 - **O número vem da heurística determinística; o modelo escreve a justificativa.**
   A recomendação de escala (subir/descer/manter tier) sai de
-  `cluster_insights.summarize` e as guardas de `atlas_client.py`, testadas com
+  `cluster_insights.summarize` e as guardas de `backend/atlas_client.py`, testadas com
   `unittest`, sem LLM no caminho. O Claude recebe a recomendação pronta e
   traduz em argumento de negócio. Isso existe porque a pergunta que sempre vem
   é "esse tier foi o modelo que chutou?" — a resposta precisa ser "não, tem
@@ -104,19 +104,19 @@ Detalhado nó a nó em `agent-behavior.md`.
   último valor não-nulo em vez de assumir zero (zero e "não reportou" são
   coisas diferentes; confundir as duas produz um scale-down bonito e errado).
 - **Escopo de escrita minimizado e isolado.** Sobre a Admin API, o único ponto
-  de escrita é `AtlasClient.scale_cluster` (`atlas_client.py:186-197`),
+  de escrita é `AtlasClient.scale_cluster` (`backend/atlas_client.py:186-197`),
   chamado só depois de aprovação explícita — qualquer revisão de segurança tem
   um lugar único pra olhar. No assistente operacional, todas as 29 ferramentas
   MCP são somente-leitura ou apenas preparam uma proposta (`ClusterTools.prepare`,
-  `assistant_tools.py:218-251`); a execução real fica isolada em
-  `ClusterTools.execute` (`assistant_tools.py:253-307`) e só roda depois que
+  `backend/assistant_tools.py:218-251`); a execução real fica isolada em
+  `ClusterTools.execute` (`backend/assistant_tools.py:253-307`) e só roda depois que
   `assistant_actions.store.claim(...)` reivindica o token de aprovação de forma
   atômica no SQLite.
 - **Credencial nunca chega ao frontend.** `ATLAS_PUBLIC_KEY`/`ATLAS_PRIVATE_KEY`
   e `MONGODB_URI` vivem só no `.env` do backend. O browser só fala com `/api`.
 - **Guardas de injeção nas duas superfícies onde entrada de usuário toca o
   banco:** `_oid()` valida `conversation_id` antes de virar `ObjectId`
-  (`chat_memory.py:47-53`); namespace/chaves de índice passam por gramática
+  (`backend/chat_memory.py:47-53`); namespace/chaves de índice passam por gramática
   explícita antes do driver (`api._assert_namespace_is_safe`,
   `api._assert_index_keys_are_safe`, usadas também por `assistant_tools.safe_namespace`).
   No assistente, todo pipeline de agregação é validado contra uma lista fechada
@@ -127,9 +127,9 @@ Detalhado nó a nó em `agent-behavior.md`.
 - **Cache com TTL nas chamadas caras da Admin API.** Resolver o primário de um
   cluster custa uma sequência de chamadas; múltiplas telas pedindo isso a cada
   render transformaria a Admin API no gargalo da própria ferramenta
-  (`atlas_client.py:82-115`, TTL de 60s pro primário e 30s pra listagens).
+  (`backend/atlas_client.py:82-115`, TTL de 60s pro primário e 30s pra listagens).
 - **Métrica vem do primário, resolvido explicitamente** — não do primeiro
-  processo que a lista devolver (`atlas_client.py:203-273`, usa o hash do
+  processo que a lista devolver (`backend/atlas_client.py:203-273`, usa o hash do
   cluster na `connectionString`, porque nomes genéricos de cluster colidem com
   "mongodb" no hostname de qualquer cluster).
 - **Aprovações são duráveis e single-use**, guardadas em SQLite
@@ -159,18 +159,18 @@ Detalhado nó a nó em `agent-behavior.md`.
 
 ```bash
 ./run_react.sh                              # sobe backend (8765) + frontend (5290)
-uvicorn api:app --reload --port 8765
+uvicorn backend.api:app --reload --port 8765
 cd frontend && npm run dev / npm run build
 python -m unittest discover -s tests -v     # sem credencial Atlas/Mongo
-python populate_workload.py                 # semeia carga pra Performance Advisor/Profiler
-python populate_profiler.py
+python scripts/populate_workload.py                 # semeia carga pra Performance Advisor/Profiler
+python scripts/populate_profiler.py
 docker build --build-context shared=../_shared -t torre . && docker run --env-file .env -p 18085:8080 torre   # pov-shared via contexto nomeado
 ```
 
 ## Coleta e demo — v3.1.0
 
-`cluster_insights.py` agrega os nós corretos do cluster, alinha CPU em intervalos comuns de cinco minutos e conserva lacunas. FinOps diferencia clusters pausados, erro de fatura e cobertura insuficiente. Redução exige pelo menos 90% de cobertura simultânea, dados recentes suficientes e snapshots completos; memória usada não prova pressão de cache.
+`backend/cluster_insights.py` agrega os nós corretos do cluster, alinha CPU em intervalos comuns de cinco minutos e conserva lacunas. FinOps diferencia clusters pausados, erro de fatura e cobertura insuficiente. Redução exige pelo menos 90% de cobertura simultânea, dados recentes suficientes e snapshots completos; memória usada não prova pressão de cache.
 
-Escala consulta `/live` a cada cinco segundos, sem requisições sobrepostas. `metrics_cache.py` usa apenas um segundo de cache nesse endpoint para colapsar consultas concorrentes; recomendações históricas usam 60 segundos. As amostras Atlas têm granularidade de um minuto e timestamps por nó. Os gráficos históricos foram retirados da tela, mas continuam alimentando as guardas.
+Escala consulta `/live` a cada cinco segundos, sem requisições sobrepostas. `backend/metrics_cache.py` usa apenas um segundo de cache nesse endpoint para colapsar consultas concorrentes; recomendações históricas usam 60 segundos. As amostras Atlas têm granularidade de um minuto e timestamps por nó. Os gráficos históricos foram retirados da tela, mas continuam alimentando as guardas.
 
 `run_react.sh` inicia carga somente leitura de seis minutos, até seis workers, sobre o dataset existente. `TORRE_STRESS=0` desativa; `STRESS_MINUTES`/`STRESS_WORKERS` ajustam o teste. Não cria documentos, índices ou tiers. Logs e evidências ficam locais em `.assistant-state/`, ignorados pelo Git.

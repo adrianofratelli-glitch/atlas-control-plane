@@ -1,6 +1,6 @@
 """Evidence shared by FinOps, Scale, reports and the read-only MCP tool."""
 import math
-from atlas_client import AtlasClient
+from backend.atlas_client import AtlasClient
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 

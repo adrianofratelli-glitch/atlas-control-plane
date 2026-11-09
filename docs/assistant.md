@@ -4,7 +4,7 @@ O cliente descreve o que precisa em português. O Assistente consulta ferramenta
 
 ## Conexão e execução
 
-React → `/api/assistant` (NDJSON) → modelo configurado → SDK MCP via stdio → `torre_mcp_server.py` → Atlas Admin API / PyMongo.
+React → `/api/assistant` (NDJSON) → modelo configurado → SDK MCP via stdio → `backend/torre_mcp_server.py` → Atlas Admin API / PyMongo.
 
 O servidor MCP é iniciado automaticamente por rodada, com projeto e cluster fixados pelo backend. As ferramentas de alteração fazem apenas a prévia. A execução acontece em `/api/assistant/actions/{id}`, após o clique em **Aprovar e executar**, usando os argumentos gravados no servidor. O modelo não recebe uma ferramenta para aprovar ou executar ações.
 
@@ -20,11 +20,11 @@ O seletor de cluster é compartilhado com Índices, Consultas, Saúde e Escala. 
 | Coleções | Descobrir estrutura observada | Criar/excluir coleção, definir validator |
 | Search / Vector | Listar índices e estados; agregações com `$search`/`$vectorSearch` | Criar, atualizar e remover índices |
 
-São 29 ferramentas (12 apenas preparam alterações para aprovação). Não há shell, MQL arbitrário com efeitos colaterais, administração de usuários/IAM, exclusão de banco ou backup/restore neste catálogo. Novas operações devem ser registradas em `assistant_tools.py`, com schema, prévia e testes. Não anuncie suporte irrestrito a toda a API MongoDB.
+São 29 ferramentas (12 apenas preparam alterações para aprovação). Não há shell, MQL arbitrário com efeitos colaterais, administração de usuários/IAM, exclusão de banco ou backup/restore neste catálogo. Novas operações devem ser registradas em `backend/assistant_tools.py`, com schema, prévia e testes. Não anuncie suporte irrestrito a toda a API MongoDB.
 
 ## Configuração
 
-Instale `requirements.txt`; `run_react.sh` também verifica a presença do SDK MCP. São usadas as mesmas variáveis Atlas, `MONGODB_URI`, `MONGODB_DB`, `GROVE_BASE_URL`, `GROVE_API_KEY` e `CLAUDE_MODEL` do restante da aplicação. Toda chamada ao modelo passa pelo gateway Grove via `pov-shared` (`llm_gateway.py` → `grove_client.AsyncGroveClient`: `Authorization: Bearer` + chave real em `x-api-key`, retry/backoff em 429/5xx, circuit breaker e troca de chave). Sem `GROVE_BASE_URL` e `GROVE_API_KEY` o assistente fica desligado (falha fechado); não há fallback para chave direta do provedor. O subprocesso MCP não recebe credenciais de LLM nem de tracing. Credenciais não são enviadas ao frontend.
+Instale `requirements.txt`; `run_react.sh` também verifica a presença do SDK MCP. São usadas as mesmas variáveis Atlas, `MONGODB_URI`, `MONGODB_DB`, `GROVE_BASE_URL`, `GROVE_API_KEY` e `CLAUDE_MODEL` do restante da aplicação. Toda chamada ao modelo passa pelo gateway Grove via `pov-shared` (`backend/llm_gateway.py` → `grove_client.AsyncGroveClient`: `Authorization: Bearer` + chave real em `x-api-key`, retry/backoff em 429/5xx, circuit breaker e troca de chave). Sem `GROVE_BASE_URL` e `GROVE_API_KEY` o assistente fica desligado (falha fechado); não há fallback para chave direta do provedor. O subprocesso MCP não recebe credenciais de LLM nem de tracing. Credenciais não são enviadas ao frontend.
 
 A conexão `MONGODB_URI` é validada contra o cluster selecionado antes de cada operação de dados e novamente antes da execução. Se não corresponder, a operação é recusada. Uma única URI não dá acesso aos dados de todos os clusters da organização; a API Atlas pode listar outros clusters, mas a conexão de dados precisa corresponder ao alvo escolhido.
 
@@ -74,7 +74,7 @@ O teste visual `tests/browser-assistant.cjs` usa Playwright e intercepta todas a
 
 ## Observability opcional: Langfuse
 
-Com `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` no `.env` (`tracing.py`), cada turno vira uma trace: uma generation por passo de raciocínio do LLM, um span por tool call MCP. Fail-open — sem as chaves, ou com o Langfuse fora do ar, vira no-op e o turno segue normal (um `auth_check()` roda uma vez por processo pra nunca expor um link que dê 404 no meio de uma demo). O evento `trace_url` sai no stream logo após `connected`, e o Chat renderiza o badge "Ver trace no Langfuse" no cabeçalho assim que chega — antes mesmo da resposta terminar.
+Com `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` no `.env` (`backend/tracing.py`), cada turno vira uma trace: uma generation por passo de raciocínio do LLM, um span por tool call MCP. Fail-open — sem as chaves, ou com o Langfuse fora do ar, vira no-op e o turno segue normal (um `auth_check()` roda uma vez por processo pra nunca expor um link que dê 404 no meio de uma demo). O evento `trace_url` sai no stream logo após `connected`, e o Chat renderiza o badge "Ver trace no Langfuse" no cabeçalho assim que chega — antes mesmo da resposta terminar.
 
 ## Relatórios e evidências — v3.1.0
 

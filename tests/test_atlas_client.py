@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from atlas_client import AtlasClient
+from backend.atlas_client import AtlasClient
 
 
 class TestRecommendScaling(unittest.TestCase):

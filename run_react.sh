@@ -49,7 +49,7 @@ echo "Backend  (API) -> http://localhost:$API_PORT"
 echo "Frontend (UI)  -> http://localhost:$WEB_PORT"
 echo "──────────────────────────────────────────────"
 
-UVICORN_ARGS=(api:app --host 127.0.0.1 --port "$API_PORT")
+UVICORN_ARGS=(backend.api:app --host 127.0.0.1 --port "$API_PORT")
 [ "${POV_DEV:-0}" = "1" ] && UVICORN_ARGS+=(--reload)
 uvicorn "${UVICORN_ARGS[@]}" &
 BACK=$!
@@ -66,7 +66,7 @@ trap 'exit 0' INT TERM
 # Bounded, read-only demo load. Failure never prevents opening the UI.
 if [ "${TORRE_STRESS:-1}" = "1" ]; then
   mkdir -p .assistant-state
-  python -u stress_readonly.py --minutes "${STRESS_MINUTES:-6}" --workers "${STRESS_WORKERS:-6}" \
+  python -u scripts/stress_readonly.py --minutes "${STRESS_MINUTES:-6}" --workers "${STRESS_WORKERS:-6}" \
     --output .assistant-state/startup-stress.json > .assistant-state/startup-stress.log 2>&1 &
   STRESS_PID=$!
   echo "Stress somente leitura iniciado (${STRESS_MINUTES:-6} min, até ${STRESS_WORKERS:-6} workers)."

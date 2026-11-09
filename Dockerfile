@@ -22,7 +22,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY --from=shared . /opt/pov-shared
 RUN pip install --no-cache-dir "/opt/pov-shared[llm]"
 
-COPY *.py ./
+COPY backend/ ./backend/
+COPY scripts/ ./scripts/
 COPY --from=frontend-build /build/dist ./frontend/dist
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY docker/start.sh /start.sh

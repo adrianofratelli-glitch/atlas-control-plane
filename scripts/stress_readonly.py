@@ -1,5 +1,5 @@
 """Bounded read-only stress of existing PoV data; no inserts or index changes.
-Usage: python stress_readonly.py --minutes 6 --workers 6 --output /tmp/stress.json
+Usage: python scripts/stress_readonly.py --minutes 6 --workers 6 --output /tmp/stress.json
 """
 import argparse
 import fcntl
@@ -27,7 +27,7 @@ def main():
     if not 0 < args.minutes <= 30 or not 1 <= args.workers <= 12:
         parser.error('minutes must be (0,30], workers [1,12]')
     # One workload per workspace, even if launchers overlap or a manual run exists.
-    lock_path = Path(__file__).with_name('.assistant-state') / 'stress.lock'
+    lock_path = Path(__file__).resolve().parents[1] / '.assistant-state' / 'stress.lock'
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     workload_lock = lock_path.open('w')
     try:
@@ -35,7 +35,7 @@ def main():
     except BlockingIOError:
         print('Stress já está ativo neste workspace; nova carga não iniciada.', flush=True)
         return
-    load_dotenv(Path(__file__).with_name('.env'))
+    load_dotenv(Path(__file__).resolve().parents[1] / '.env')
     uri = os.environ['MONGODB_URI']
     client = MongoClient(uri, appname='torre-readonly-stress', maxPoolSize=args.workers + 2,
                          serverSelectionTimeoutMS=10000, socketTimeoutMS=8000, connectTimeoutMS=5000)

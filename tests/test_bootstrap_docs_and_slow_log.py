@@ -21,7 +21,7 @@ os.environ["MONGODB_URI"] = ""
 import requests  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-import api  # noqa: E402
+from backend import api  # noqa: E402
 
 # CLAUDE.md/AGENTS.md ficam fora do Git (gitignore global), mas são lidos por agentes: entram
 # na checagem quando existem localmente.

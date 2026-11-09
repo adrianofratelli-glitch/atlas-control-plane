@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Estrutura: o código de runtime saiu da raiz para o pacote `backend/` (api, atlas_client, assistant_*, ai_agent, chat_memory, cluster_insights, llm_gateway, metrics_cache, observability, tracing, torre_mcp_server) e os utilitários de linha de comando (`populate_workload.py`, `populate_profiler.py`, `stress_readonly.py`) foram para `scripts/`. Imports passam a ser `backend.*`; o servidor sobe com `uvicorn backend.api:app` e o servidor MCP com `python -m backend.torre_mcp_server`. `run_react.sh`, `docker/start.sh`, Dockerfile, CI, testes e docs foram atualizados. Sem mudança de comportamento.
 - Atualiza dependências compatíveis e pisos de segurança; alinha metadados de versão entre aplicação e frontend.
 
 ## 3.2.1 (2026-10-09)
@@ -13,11 +14,11 @@
 
 ## 3.2.0 (2026-10-06)
 
-- LLM: every Claude call goes through the Grove gateway via `pov-shared` (`llm_gateway.py` → `grove_client.AsyncGroveClient`), with retry/backoff on 429/5xx, circuit breaker and key failover. The assistant fails closed without `GROVE_BASE_URL`/`GROVE_API_KEY`; the direct-provider fallback and the unused synchronous chat/analysis helpers were removed. Haiku maps to `claude-sonnet-5-5`.
+- LLM: every Claude call goes through the Grove gateway via `pov-shared` (`backend/llm_gateway.py` → `grove_client.AsyncGroveClient`), with retry/backoff on 429/5xx, circuit breaker and key failover. The assistant fails closed without `GROVE_BASE_URL`/`GROVE_API_KEY`; the direct-provider fallback and the unused synchronous chat/analysis helpers were removed. Haiku maps to `claude-sonnet-5-5`.
 - Tracing: CPF, CNPJ, e-mail, phone, card numbers and connection strings are masked in every Langfuse trace, generation and span; the turn trace is created after masking.
 - Assistant: follow-up turns in the same session now run the tools the model requests (a stale checkpointed outcome ended them early). Torre's internal database (chat history and every session's checkpoints) is no longer readable through the data tools, and `$regex` is rejected outside `explain`.
 - API: Atlas ids are validated before any Admin API call; GETs retry 502/503/504 and connection resets; Atlas 5xx/timeouts return a sanitized 502; `explain` is bounded by `maxTimeMS` and no longer echoes driver errors.
-- Ops: `scripts/reset_demo.py` (idempotent, guarded by `ALLOW_DEMO_DB_WRITE`); `populate_workload.py` writes only with that flag and tags its documents; the `$regex` load generators are documented as the explicit exception.
+- Ops: `scripts/reset_demo.py` (idempotent, guarded by `ALLOW_DEMO_DB_WRITE`); `scripts/populate_workload.py` writes only with that flag and tags its documents; the `$regex` load generators are documented as the explicit exception.
 - Launcher: one `./venv`, literal `.env` loading, `pov-shared` install, Vite reinstall when missing, loopback bind.
 - UI: removed the unrouted Compare and Clusters pages; the assistant banner explains the gateway configuration. `axios` 1.20.0 (npm audit high).
 - Tests: adversarial suite (`tests/test_hardening_adversarial.py`); tests never write to a real database.

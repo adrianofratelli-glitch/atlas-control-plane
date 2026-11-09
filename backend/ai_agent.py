@@ -7,8 +7,8 @@ own `anthropic.Anthropic` client were removed in v3.2.0: the UI only uses the MC
 assistant runtime (`assistant_runtime.py`).
 """
 
-import observability
-from llm_gateway import resolve_model
+from backend import observability
+from backend.llm_gateway import resolve_model
 
 # Sonnet 5 = best cost/speed for the demo; override via CLAUDE_MODEL. Haiku is mapped to
 # claude-sonnet-5-5 because the gateway does not serve it.

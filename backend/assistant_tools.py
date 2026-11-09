@@ -70,7 +70,7 @@ def internal_databases():
 
 
 def safe_namespace(namespace):
-    import api
+    from backend import api
     api._assert_namespace_is_safe(namespace)
     # Checkpoints hold other sessions' full conversations: never readable via the assistant.
     if namespace.split(".", 1)[0].lower() in internal_databases():
@@ -146,17 +146,17 @@ class ClusterTools:
             if not update or not set(update) <= {"$set", "$unset", "$inc", "$mul", "$min", "$max", "$push", "$pull", "$addToSet", "$pop", "$rename"}:
                 raise ValueError("Use operadores de atualização suportados; substituição/upsert não habilitados.")
         if name == "mongo_create_index":
-            import api
+            from backend import api
             api._assert_index_keys_are_safe(args["keys"])
         if name in {"mongo_drop_index", "mongo_drop_search_index"} and args["name"] in {"_id_", "*"}:
             raise ValueError("Este índice não pode ser removido pelo assistente.")
         if name == "atlas_scale":
-            from atlas_client import DEDICATED_TIERS, NVME_TIERS
+            from backend.atlas_client import DEDICATED_TIERS, NVME_TIERS
             if args["tier"] not in DEDICATED_TIERS + NVME_TIERS:
                 raise ValueError("Tier Atlas inválido.")
 
     def mongo(self):
-        import api
+        from backend import api
         uri = api.os.getenv("MONGODB_URI", "")
         if not uri:
             raise ValueError("Conexão de dados não configurada: defina MONGODB_URI no servidor.")
@@ -170,9 +170,9 @@ class ClusterTools:
         return serializable(result)
 
     def read(self, name, args):
-        import api
+        from backend import api
         if name == "atlas_cost":
-            from atlas_client import AtlasClient, TIER_PRICING_USD
+            from backend.atlas_client import AtlasClient, TIER_PRICING_USD
             if args["tier"] not in TIER_PRICING_USD:
                 raise ValueError("Tier sem estimativa de tabela disponível.")
             return {"estimate": AtlasClient.estimate_cost(args["tier"]), "basis": "Tabela AWS us-east-1, sem descontos e extras"}
@@ -253,7 +253,7 @@ class ClusterTools:
 
     def prepare(self, name, args):
         """Read-only preflight; host saves immutable arguments for approval."""
-        import api
+        from backend import api
         details = {"cluster": self.cluster_name, "project_id": self.project_id, "namespace": args.get("namespace"), "operation": TOOLS[name]["label"]}
         frozen_ids = None
         if name == "atlas_scale":
@@ -288,7 +288,7 @@ class ClusterTools:
 
     def execute(self, name, args, frozen_ids=None):
         """Only approval handler calls this, after atomically claiming the token."""
-        import api
+        from backend import api
         self.validate(name, args)
         if not TOOLS[name]["write"]:
             raise ValueError("Operação não é uma alteração.")
