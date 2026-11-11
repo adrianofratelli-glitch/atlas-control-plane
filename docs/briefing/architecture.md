@@ -143,6 +143,14 @@ Detalhado nó a nó em `agent-behavior.md`.
   a análise simples reusam o mesmo modelo/config, evitando duas fontes de
   verdade sobre "qual Claude está respondendo".
 
+- **`AtlasClient` é singleton por processo** (`backend/api.py:get_client`), reconstruído só quando as
+  credenciais do `.env` mudam: recriá-lo a cada request perdia o pooling da `requests.Session`.
+- **Rotas que esperam a Admin API não bloqueiam o event loop:** `/api/clusters` e `/api/finops` são
+  `async def` com o corpo síncrono em `run_in_threadpool`.
+- **Escala ao vivo sem martelar a Admin API:** a tela consulta `/live` a cada 5 s sem sobrepor requests e
+  para ao sair da aba; o backend tem cache single-flight de 1 s só para colapsar consultas simultâneas.
+  Recomendações históricas a cada 60 s.
+
 ## Ambiente
 
 | Variável | Obrigatória | Papel |

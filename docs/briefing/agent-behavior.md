@@ -194,9 +194,6 @@ raciocínio do LLM, um *span* por chamada de ferramenta MCP. O evento
 `trace_url` sai no stream logo após `connected`, e o `Chat.jsx` renderiza o
 badge "Ver trace no Langfuse" assim que chega.
 
-**Nunca mencionar Postgres em call/demo/material de cliente** — é infra
-interna do Langfuse (self-host), invisível ao usuário, e citá-la mistura a
-mensagem com um concorrente direto da MongoDB.
 
 ## 9. O chat simples (`backend/ai_agent.py`) — para contraste
 
