@@ -14,7 +14,7 @@ fpdf2>=2.7,<3
 
 # MCP protocol (supported 1.x SDK) and tool input validation
 mcp>=1.30,<2
-jsonschema>=4.20,<5
+jsonschema>=4.26.0,<5
 
 # Observability do loop do assistente (trace/generation/span). Fail-open sem
 # chaves configuradas — ver backend/tracing.py. Pin <3: SDK v4 troca a API usada aqui.
