@@ -7,7 +7,7 @@ requests>=2.31,<3
 # LLM: toda chamada passa pelo gateway Grove via pov-shared (grove_client), que não está
 # no PyPI. Instale no mesmo venv:  uv pip install --python venv/bin/python -e "../_shared[llm]"
 # (anthropic fica listado só pelos tipos usados nos testes; o cliente é o do pov-shared.)
-anthropic>=0.116,<1
+anthropic>=2.6.0,<3
 python-dotenv>=1.0,<2
 pymongo>=4.18.3,<5
 fpdf2>=2.7,<3
