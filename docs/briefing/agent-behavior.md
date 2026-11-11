@@ -40,27 +40,29 @@ não existia antes da migração). Checkpoint em MongoDB via
 `langgraph-checkpoint-mongodb` quando `MONGODB_URI` está configurada;
 `MemorySaver` em processo quando não. As etapas, em ordem:
 
-1. **Setup do turno** (`backend/assistant_runtime.py:33-53`) — sobe um `StdioServerParameters`
+1. **Setup do turno** (`backend/assistant_runtime.py:32-49`) — sobe um `StdioServerParameters`
    apontando pro mesmo interpretador Python rodando
    `backend/torre_mcp_server.py PROJECT_ID CLUSTER_NAME` como subprocesso, com env
    restrito a `PATH, HOME, LANG, ATLAS_PUBLIC_KEY, ATLAS_PRIVATE_KEY,
-   ATLAS_ORG_ID, ATLAS_PROJECT_ID, MONGODB_URI` (nada mais do ambiente do host
+   ATLAS_ORG_ID, ATLAS_PROJECT_ID, MONGODB_URI, MONGODB_DB` (nada mais do ambiente do host
    vaza pro child). O histórico é recortado às últimas 16 mensagens e
-   truncado até começar com uma mensagem de `user` (`backend/assistant_runtime.py:40-42`).
+   truncado até começar com uma mensagem de `user` (`backend/assistant_runtime.py:39-41`).
 2. **Carrega o registro de ações recentes** da sessão via
    `store.recent(session_id, project_id, cluster_name)` (SQLite) e injeta no
    `system prompt` como JSON (`operation`, `state`, `result` de cada ação —
-   `backend/assistant_runtime.py:43-46`). É assim que o modelo sabe se uma ação que ele
+   `backend/assistant_runtime.py:42-45`). É assim que o modelo sabe se uma ação que ele
    preparou já foi aprovada, cancelada ou expirou, sem precisar de uma
    ferramenta de consulta separada.
 3. **Abre trace Langfuse** (`tracing.start_trace`, fail-open — sem chave, vira
    no-op) e emite o evento `trace_url` assim que disponível, antes mesmo da
-   resposta terminar (`backend/assistant_runtime.py:56-71`).
+   resposta terminar (`backend/assistant_runtime.py:52-68`).
 4. **Conecta ao servidor MCP** via stdio (`stdio_client` + `ClientSession`,
-   `backend/assistant_runtime.py:63-67`), lista as ferramentas expostas e filtra pelo
+   `backend/assistant_runtime.py:60-65`), lista as ferramentas expostas e filtra pelo
    catálogo local `TOOLS` (`backend/assistant_tools.py`) — dupla checagem entre o que o
    servidor anuncia e o que o cliente reconhece.
-5. **Loop de tool-use** (até 12 iterações, `backend/assistant_runtime.py:73-142`):
+5. **Loop de tool-use** (até 12 iterações, `MAX_ITERATIONS` em `backend/assistant_graph.py:31`;
+   `run_loop` chamado em `backend/assistant_runtime.py:74-78`, nós `n_call_model` e `n_call_tools`
+   em `backend/assistant_graph.py:49-97` e `:108-151`):
    - Chama `client.messages.stream(...)` com `system`, `history` e as `tools`
      do MCP, streamando texto token a token via `emit({"type": "text", ...})`.
    - Registra uma *generation* no Langfuse por iteração
@@ -71,13 +73,13 @@ não existia antes da migração). Checkpoint em MongoDB via
      `mcp.call_tool(name, input)`, decodifica o resultado JSON, registra um
      *span* Langfuse por chamada (`tracing.log_span`), emite `tool_end`.
    - **Limite de 40 chamadas de ferramenta por rodada** (contador `calls`,
-     `backend/assistant_runtime.py:107-111`) — corta a análise em vez de deixar o
+     `backend/assistant_graph.py:113-120`) — corta a análise em vez de deixar o
      modelo martelar ferramentas indefinidamente.
 6. **Encerramento**: fecha o cliente do gateway se foi criado aqui, e
    sempre finaliza a trace Langfuse com o texto completo da resposta (mascarado)
-   (`finally`, `backend/assistant_runtime.py:144-147`).
+   (`finally`, `backend/assistant_runtime.py:79-82`).
 
-`run_assistant` (`backend/assistant_runtime.py:150-174`) é só o adaptador que
+`run_assistant` (`backend/assistant_runtime.py:85-113`) é só o adaptador que
 transforma o produtor (`_produce`, que fala via `emit`/callback) num gerador
 assíncrono consumido pela rota FastAPI, com cancelamento limpo do subprocesso
 MCP se o cliente HTTP desconectar.
@@ -99,7 +101,7 @@ diferentes, sem mudança pela migração:
 Não existe "memória de longo prazo" do agente em si (nada de embeddings/RAG
 sobre conversas passadas alimentando o próximo turno) — o contexto que o
 modelo recebe é: histórico recente da conversa + registro de ações da sessão
-(`outcomes`, montado a cada turno em `backend/assistant_runtime.py:44`).
+(`outcomes`, montado a cada turno em `backend/assistant_runtime.py:43`).
 
 ## 4. Ferramentas — o "tool belt" do agente
 
@@ -122,7 +124,7 @@ Resumo por área (do `docs/assistant.md`, confirmado no código):
 
 Deliberadamente **fora do catálogo**: shell, MQL arbitrário com efeito
 colateral, administração de usuários/IAM, exclusão de banco, backup/restore.
-O `SYSTEM` prompt (`backend/assistant_runtime.py:17-26`) instrui o modelo a descrever
+O `SYSTEM` prompt (`backend/assistant_runtime.py:16-25`) instrui o modelo a descrever
 esses limites honestamente em vez de fingir suporte.
 
 ## 5. "Memória" no sentido de contexto do modelo — e o que ela NÃO é
@@ -138,7 +140,7 @@ esses limites honestamente em vez de fingir suporte.
 - Dados de documentos, nomes e resultados de ferramentas são tratados
   explicitamente no `SYSTEM` prompt como **conteúdo não confiável**: o modelo
   é instruído a nunca executar uma ação porque ela "apareceu" dentro de um
-  documento lido via ferramenta (`backend/assistant_runtime.py:22`) — mitigação de
+  documento lido via ferramenta (`backend/assistant_runtime.py:21`) — mitigação de
   prompt injection via dado do próprio cluster.
 
 ## 6. O fluxo de aprovação (onde a execução real acontece)
@@ -150,13 +152,13 @@ Nenhuma ferramenta MCP grava no banco. O fluxo de duas fases:
    pediu a ferramenta de escrita. Só lê (ex.: conta quantos documentos
    casam o filtro, congela os IDs). Devolve `{"proposal": True, "operation",
    "arguments", "details", "frozen_ids", "destructive"}`.
-2. `assistant_runtime._produce` detecta `data.get("proposal") is True` e
+2. `assistant_graph.n_call_tools` detecta `data.get("proposal") is True` e
    **antes de devolver o resultado ao modelo**, grava a ação no SQLite
    (`store.create(...)`), emite o evento `{"type": "action", ...}` (o cartão
    que a UI renderiza), e substitui o conteúdo devolvido ao modelo por
    `{"status": "pending_user_approval", ...}` — o modelo nunca recebe um ID de
    aprovação como argumento de ferramenta, então não pode "aprovar a si
-   mesmo" em outra chamada (`backend/assistant_runtime.py:124-130`).
+   mesmo" em outra chamada (`backend/assistant_graph.py:132-138`).
 3. Humano clica **Aprovar e executar** na UI → `POST
    /api/assistant/actions/{id}` (`backend/assistant_api.py`) → `store.claim(...)`
    reivindica o token com `BEGIN IMMEDIATE` e transição de estado atômica
