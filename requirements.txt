@@ -8,7 +8,7 @@ requests>=2.31,<3
 # no PyPI. Instale no mesmo venv:  uv pip install --python venv/bin/python -e "../_shared[llm]"
 # (anthropic fica listado só pelos tipos usados nos testes; o cliente é o do pov-shared.)
 anthropic>=0.116,<1
-python-dotenv>=1.0,<2
+python-dotenv>=1.2.4,<2
 pymongo>=4.18.3,<5
 fpdf2>=2.7,<3
 
