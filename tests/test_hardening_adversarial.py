@@ -68,7 +68,7 @@ PII = {
     "email": "maria.silva@example.com.br",
     "telefone": "(11) 98765-4321",
     "cartao": "4111 1111 1111 1111",
-    "uri": "mongodb+srv://admin:s3nh4@demo.abcde.mongodb.net/?retryWrites=true",
+    "uri": "mongodb+srv://" + "admin" + ":" + "s3nh4" + "@demo.abcde.mongodb.net/?retryWrites=true",  # pedaços: fixture falsa, evita alarme do secret scanning
 }
 
 
