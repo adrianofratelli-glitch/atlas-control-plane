@@ -22,3 +22,6 @@ npm-debug.log*
 
 # Local approval/audit state
 .assistant-state/
+
+# Quality eval output (eval/run_quality.py)
+eval/reports/

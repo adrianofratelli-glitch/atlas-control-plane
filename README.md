@@ -134,6 +134,14 @@ cd frontend && node --test tests/*.test.mjs
 
 Offline, no credentials needed: scaling heuristic, injection guards, chat-memory ids, the assistant graph, and `tests/test_hardening_adversarial.py` (gateway fail-closed and 429/5xx retry, PII never reaching Langfuse, prompt injection and tool abuse, hostile ids and payloads, Atlas 429/5xx/timeouts, concurrent approvals, reset guard) and `tests/test_bootstrap_docs_and_slow_log.py` (docs never ask for a direct provider key, the Docker build always gets the `shared` context, slow-log cap, `/scaling` without `tier`). Tests force the in-memory checkpointer, so they never write to a real database.
 
+## Quality evaluation (avaliação de qualidade)
+
+```bash
+venv/bin/python eval/run_quality.py --out /tmp/torre_quality.json   # ~1 s, offline, writes JSON, always exits 0
+```
+
+Measures what is deterministic in the PoV's value, with synthetic fixtures (no Atlas, no LLM): the scaling heuristic (`AtlasClient.recommend_scaling`: high CPU → scale up, idle → scale down, M10 never down, off-peak snapshot does not trigger a downsize), the fleet insights (`cluster_insights.summarize`/`collect`: hottest node governs, partial history or a missing node blocks a downsize, null points stay null instead of becoming zero load), and the assistant guards (`ClusterTools.validate`: `$out`/`$merge`/`$where`/`$regex`, update without filter, `_id_` drop, invalid tier, Torre's internal database). Metrics: accuracy, unsafe operations accepted, safe ones blocked, wrong downsizes. 2026-11-12: 32/32, 0/0/0. The golden set in `eval/golden.json` is a **draft (rascunho) to be validated**.
+
 ## Production boundary
 
 Set a long, random `API_AUTH_TOKEN`; it protects the API routes and metrics while liveness stays public. Atlas errors are logged on the server and sanitized for clients, and index definitions accept only a safe field/direction per key. The image runs as UID 10001 behind nginx with security headers. In shared environments, prefer a real IdP/API gateway and private egress to Atlas.
