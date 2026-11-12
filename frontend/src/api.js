@@ -19,7 +19,7 @@ export const getPA          = (pid, name) => http.get(`${c(pid, name)}/pa`).then
 export const getSlow        = (pid, name) => http.get(`${c(pid, name)}/slow`).then(r => r.data)
 export const getMeasurements= (pid, name) => http.get(`${c(pid, name)}/measurements`).then(r => r.data)
 export const getSeries      = (pid, name) => http.get(`${c(pid, name)}/series`).then(r => r.data)
-export const getHealth      = (pid, name, status, mv) => http.get(`${c(pid, name)}/health`, { params: { status, mongo_version: mv } }).then(r => r.data)
+export const getHealth      = (pid, name) => http.get(`${c(pid, name)}/health`).then(r => r.data)
 export const getLiveMetrics = (pid, name, tier) => http.get(`${c(pid, name)}/live`, { params: { tier } }).then(r => r.data)
 export const getScaling     = (pid, name, tier) => http.get(`${c(pid, name)}/scaling`, { params: { tier } }).then(r => r.data)
 export const scaleCluster   = (pid, name, newTier) => http.post(`${c(pid, name)}/scale`, { new_tier: newTier }).then(r => r.data)

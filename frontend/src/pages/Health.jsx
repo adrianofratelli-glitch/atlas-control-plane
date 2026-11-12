@@ -15,7 +15,7 @@ export default function Health({ clusters }) {
 
   const calc = async () => {
     setBusy(true); setHs(null)
-    try { setHs(await getHealth(sel.project_id, sel.cluster_name, sel.status, sel.mongo_version)) }
+    try { setHs(await getHealth(sel.project_id, sel.cluster_name)) }
     finally { setBusy(false) }
   }
 
