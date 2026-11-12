@@ -1,69 +1,678 @@
 {
-  "_status": "RASCUNHO — validar com o usuário. Casos sintéticos derivados do comportamento documentado (AGENTS.md, docs/briefing/agent-behavior.md, docs/assistant.md) e dos limiares do código; nenhuma métrica, nome de projeto ou cluster real.",
+  "_status": "VALIDADO pelo usuário em 2026-11-12 (política de escala aprovada como está). Casos sintéticos, sem dado de cliente.",
   "_formato": "grupo escala -> AtlasClient.recommend_scaling(measurements, tier, cpu24); insights -> cluster_insights.summarize(nós sintéticos); serie -> AtlasClient.get_measurements_series com resposta da Admin API simulada; coleta -> cluster_insights.collect com cliente falso (janela 24h real, pontos nulos); guarda -> ClusterTools.validate (bloqueia|permite); invariante -> checagem estática do catálogo de ferramentas. Nó sintético: cpu constante, points (de 288), recent (cpu dos últimos 30 min, padrão = cpu), nulls (fração de pontos nulos), snapshot (sobrescreve o snapshot limpo).",
-  "base_snapshot": {"cpu_pct": 30, "mem_pct": 40, "disk_pct": 40, "connections": 100, "disk_iops_read": 50, "disk_iops_write": 50},
+  "base_snapshot": {
+    "cpu_pct": 30,
+    "mem_pct": 40,
+    "disk_pct": 40,
+    "connections": 100,
+    "disk_iops_read": 50,
+    "disk_iops_write": 50
+  },
   "casos": [
-    {"id": "e01", "grupo": "escala", "descricao": "CPU p95 24h 85% -> subir tier, severidade alta",
-     "entrada": {"tier": "M30", "measurements": {"cpu_pct": 70}, "cpu24": {"avg": 60, "p95": 85}}, "esperado": {"action": "up", "severity": "high"}},
-    {"id": "e02", "grupo": "escala", "descricao": "CPU p95 24h 70% -> subir tier, severidade média",
-     "entrada": {"tier": "M30", "measurements": {"cpu_pct": 50}, "cpu24": {"avg": 50, "p95": 70}}, "esperado": {"action": "up", "severity": "med"}},
-    {"id": "e03", "grupo": "escala", "descricao": "pico no snapshot (95%) com 24h tranquilo: a decisão usa a janela de 24h",
-     "entrada": {"tier": "M30", "measurements": {"cpu_pct": 95}, "cpu24": {"avg": 25, "p95": 35}}, "esperado": {"action": "ok"}},
-    {"id": "e04", "grupo": "escala", "descricao": "M30 ocioso em 24h, RAM/disco/conexões com folga -> candidato a reduzir",
-     "entrada": {"tier": "M30", "measurements": {"cpu_pct": 3, "mem_pct": 30, "disk_pct": 20, "connections": 50}, "cpu24": {"avg": 4, "p95": 8}}, "esperado": {"action": "down"}},
-    {"id": "e05", "grupo": "escala", "descricao": "M10 ocioso: não há tier dedicado menor, não sugere reduzir",
-     "entrada": {"tier": "M10", "measurements": {"cpu_pct": 3, "mem_pct": 30, "disk_pct": 20, "connections": 50}, "cpu24": {"avg": 4, "p95": 8}}, "esperado": {"action": "ok"}},
-    {"id": "e06", "grupo": "escala", "descricao": "snapshot fora do pico (3%) mas média 24h 35%: não reduz",
-     "entrada": {"tier": "M30", "measurements": {"cpu_pct": 3, "mem_pct": 30, "disk_pct": 20}, "cpu24": {"avg": 35, "p95": 55}}, "esperado": {"action": "ok"}},
-    {"id": "e07", "grupo": "escala", "descricao": "memória 92%: pressão de cache -> subir, severidade alta",
-     "entrada": {"tier": "M30", "measurements": {"mem_pct": 92}, "cpu24": {"avg": 20, "p95": 30}}, "esperado": {"action": "up", "severity": "high"}},
-    {"id": "e08", "grupo": "escala", "descricao": "coleta com erro: nenhuma recomendação inventada",
-     "entrada": {"tier": "M30", "measurements": {"error": "timeout"}, "cpu24": null}, "esperado": {"action": "ok", "sem_motivos": true}},
-
-    {"id": "s01", "grupo": "insights", "descricao": "3 nós ociosos, 24h completo, snapshot limpo -> candidato a reduzir",
-     "entrada": {"tier": "M30", "expected_nodes": 3, "nodes": [{"alias": "a", "cpu": 5}, {"alias": "b", "cpu": 5}, {"alias": "c", "cpu": 5}]}, "esperado": {"action": "down"}},
-    {"id": "s02", "grupo": "insights", "descricao": "média baixa não esconde nó quente: o nó mais quente governa",
-     "entrada": {"tier": "M30", "expected_nodes": 3, "nodes": [{"alias": "a", "cpu": 90}, {"alias": "b", "cpu": 5}, {"alias": "c", "cpu": 5}]}, "esperado": {"action": "up", "hottest_node": "a"}},
-    {"id": "s03", "grupo": "insights", "descricao": "histórico parcial (20 de 288 pontos) bloqueia redução",
-     "entrada": {"tier": "M30", "expected_nodes": 3, "nodes": [{"alias": "a", "cpu": 5, "points": 20}, {"alias": "b", "cpu": 5, "points": 20}, {"alias": "c", "cpu": 5, "points": 20}]}, "esperado": {"action": "unknown"}},
-    {"id": "s04", "grupo": "insights", "descricao": "nó faltando (2 de 3) bloqueia redução",
-     "entrada": {"tier": "M30", "expected_nodes": 3, "nodes": [{"alias": "a", "cpu": 5}, {"alias": "b", "cpu": 5}]}, "esperado": {"action": "unknown"}},
-    {"id": "s05", "grupo": "insights", "descricao": "médias desiguais (30 p.p.) -> investigar nó",
-     "entrada": {"tier": "M30", "expected_nodes": 3, "nodes": [{"alias": "a", "cpu": 40}, {"alias": "b", "cpu": 10}, {"alias": "c", "cpu": 10}]}, "esperado": {"action": "investigate"}},
-    {"id": "s06", "grupo": "insights", "descricao": "24h tranquilo mas últimos 30 min em 85% -> subir",
-     "entrada": {"tier": "M30", "expected_nodes": 3, "nodes": [{"alias": "a", "cpu": 20, "recent": 85}, {"alias": "b", "cpu": 20}, {"alias": "c", "cpu": 20}]}, "esperado": {"action": "up"}},
-    {"id": "s07", "grupo": "insights", "descricao": "40% de pontos nulos com CPU baixa: nulo não vira zero, redução bloqueada",
-     "entrada": {"tier": "M30", "expected_nodes": 3, "nodes": [{"alias": "a", "cpu": 5, "nulls": 0.4}, {"alias": "b", "cpu": 5, "nulls": 0.4}, {"alias": "c", "cpu": 5, "nulls": 0.4}]}, "esperado": {"action": "unknown"}},
-
-    {"id": "t01", "grupo": "serie", "descricao": "kernel nulo num instante: CPU daquele ponto fica nula, não soma zero",
-     "entrada": {"measurements": [
-       {"name": "SYSTEM_NORMALIZED_CPU_USER", "dataPoints": [{"timestamp": "2026-01-01T00:00:00Z", "value": 10}, {"timestamp": "2026-01-01T00:05:00Z", "value": 11}]},
-       {"name": "SYSTEM_NORMALIZED_CPU_KERNEL", "dataPoints": [{"timestamp": "2026-01-01T00:00:00Z", "value": 2}, {"timestamp": "2026-01-01T00:05:00Z", "value": null}]}]},
-     "esperado": {"cpu": [12.0, null]}},
-    {"id": "t02", "grupo": "serie", "descricao": "conexões sem ponto no instante: nulo, não zero",
-     "entrada": {"measurements": [
-       {"name": "CONNECTIONS", "dataPoints": [{"timestamp": "2026-01-01T00:00:00Z", "value": 40}, {"timestamp": "2026-01-01T00:05:00Z", "value": null}]}]},
-     "esperado": {"connections": [40.0, null]}},
-
-    {"id": "c01", "grupo": "coleta", "descricao": "coleta 24h completa, 3 nós ociosos em M30 -> candidato a reduzir",
-     "entrada": {"tier": "M30", "cpu": 5, "nulls": 0.0}, "esperado": {"action": "down"}},
-    {"id": "c02", "grupo": "coleta", "descricao": "metade dos pontos nulos na Admin API: cobertura cai e a redução é bloqueada",
-     "entrada": {"tier": "M30", "cpu": 5, "nulls": 0.5}, "esperado": {"action": "unknown", "coverage_max": 60}},
-
-    {"id": "g01", "grupo": "guarda", "descricao": "$out em agregação", "entrada": {"tool": "mongo_aggregate", "args": {"namespace": "loja.pedidos", "pipeline": [{"$match": {}}, {"$out": "copia"}]}}, "esperado": "bloqueia"},
-    {"id": "g02", "grupo": "guarda", "descricao": "$facet com $merge aninhado", "entrada": {"tool": "mongo_aggregate", "args": {"namespace": "loja.pedidos", "pipeline": [{"$facet": {"x": [{"$merge": {"into": "copia"}}]}}]}}, "esperado": "bloqueia"},
-    {"id": "g03", "grupo": "guarda", "descricao": "$where em filtro", "entrada": {"tool": "mongo_find", "args": {"namespace": "loja.pedidos", "filter": {"$where": "this.total > 1"}}}, "esperado": "bloqueia"},
-    {"id": "g04", "grupo": "guarda", "nota": "pov-allow-regex: caso adversarial, a guarda deve tratar o operador", "descricao": "$regex em consulta (busca textual é $search)", "entrada": {"tool": "mongo_find", "args": {"namespace": "loja.pedidos", "filter": {"cliente": {"$regex": "^a"}}}}, "esperado": "bloqueia"},
-    {"id": "g05", "grupo": "guarda", "nota": "pov-allow-regex: caso adversarial, a guarda deve tratar o operador", "descricao": "$regex em explain é permitido (reproduzir slow query)", "entrada": {"tool": "mongo_explain", "args": {"namespace": "loja.pedidos", "filter": {"cliente": {"$regex": "^a"}}}}, "esperado": "permite"},
-    {"id": "g06", "grupo": "guarda", "descricao": "update sem filtro", "entrada": {"tool": "mongo_update", "args": {"namespace": "loja.pedidos", "filter": {}, "update": {"$set": {"status": "x"}}}}, "esperado": "bloqueia"},
-    {"id": "g07", "grupo": "guarda", "descricao": "update por substituição de documento", "entrada": {"tool": "mongo_update", "args": {"namespace": "loja.pedidos", "filter": {"status": "a"}, "update": {"status": "x"}}}, "esperado": "bloqueia"},
-    {"id": "g08", "grupo": "guarda", "descricao": "remover o índice _id_", "entrada": {"tool": "mongo_drop_index", "args": {"namespace": "loja.pedidos", "name": "_id_"}}, "esperado": "bloqueia"},
-    {"id": "g09", "grupo": "guarda", "descricao": "tier Atlas inexistente", "entrada": {"tool": "atlas_scale", "args": {"tier": "M5"}}, "esperado": "bloqueia"},
-    {"id": "g10", "grupo": "guarda", "descricao": "ler o banco interno da Torre (histórico e checkpoints)", "entrada": {"tool": "mongo_find", "args": {"namespace": "torre.chat_memory"}}, "esperado": "bloqueia"},
-    {"id": "g11", "grupo": "guarda", "descricao": "agregação de leitura com $search é permitida", "entrada": {"tool": "mongo_aggregate", "args": {"namespace": "loja.produtos", "pipeline": [{"$search": {"index": "default", "text": {"query": "fone", "path": "nome"}}}, {"$limit": 5}]}}, "esperado": "permite"},
-    {"id": "g12", "grupo": "guarda", "descricao": "preparar escala para tier válido é permitido (execução só após aprovação)", "entrada": {"tool": "atlas_scale", "args": {"tier": "M40"}}, "esperado": "permite"},
-
-    {"id": "v01", "grupo": "invariante", "descricao": "toda ferramenta que altera (insert/update/delete/create/drop/set/scale) é marcada write e passa por aprovação; nenhuma ferramenta de execução exposta",
-     "entrada": {}, "esperado": {"write_tools": ["atlas_scale", "mongo_create_collection", "mongo_create_index", "mongo_create_search_index", "mongo_delete", "mongo_drop_collection", "mongo_drop_index", "mongo_drop_search_index", "mongo_insert", "mongo_set_validator", "mongo_update", "mongo_update_search_index"]}}
+    {
+      "id": "e01",
+      "grupo": "escala",
+      "descricao": "CPU p95 24h 85% -> subir tier, severidade alta",
+      "entrada": {
+        "tier": "M30",
+        "measurements": {
+          "cpu_pct": 70
+        },
+        "cpu24": {
+          "avg": 60,
+          "p95": 85
+        }
+      },
+      "esperado": {
+        "action": "up",
+        "severity": "high"
+      }
+    },
+    {
+      "id": "e02",
+      "grupo": "escala",
+      "descricao": "CPU p95 24h 70% -> subir tier, severidade média",
+      "entrada": {
+        "tier": "M30",
+        "measurements": {
+          "cpu_pct": 50
+        },
+        "cpu24": {
+          "avg": 50,
+          "p95": 70
+        }
+      },
+      "esperado": {
+        "action": "up",
+        "severity": "med"
+      }
+    },
+    {
+      "id": "e03",
+      "grupo": "escala",
+      "descricao": "pico no snapshot (95%) com 24h tranquilo: a decisão usa a janela de 24h",
+      "entrada": {
+        "tier": "M30",
+        "measurements": {
+          "cpu_pct": 95
+        },
+        "cpu24": {
+          "avg": 25,
+          "p95": 35
+        }
+      },
+      "esperado": {
+        "action": "ok"
+      }
+    },
+    {
+      "id": "e04",
+      "grupo": "escala",
+      "descricao": "M30 ocioso em 24h, RAM/disco/conexões com folga -> candidato a reduzir",
+      "entrada": {
+        "tier": "M30",
+        "measurements": {
+          "cpu_pct": 3,
+          "mem_pct": 30,
+          "disk_pct": 20,
+          "connections": 50
+        },
+        "cpu24": {
+          "avg": 4,
+          "p95": 8
+        }
+      },
+      "esperado": {
+        "action": "down"
+      }
+    },
+    {
+      "id": "e05",
+      "grupo": "escala",
+      "descricao": "M10 ocioso: não há tier dedicado menor, não sugere reduzir",
+      "entrada": {
+        "tier": "M10",
+        "measurements": {
+          "cpu_pct": 3,
+          "mem_pct": 30,
+          "disk_pct": 20,
+          "connections": 50
+        },
+        "cpu24": {
+          "avg": 4,
+          "p95": 8
+        }
+      },
+      "esperado": {
+        "action": "ok"
+      }
+    },
+    {
+      "id": "e06",
+      "grupo": "escala",
+      "descricao": "snapshot fora do pico (3%) mas média 24h 35%: não reduz",
+      "entrada": {
+        "tier": "M30",
+        "measurements": {
+          "cpu_pct": 3,
+          "mem_pct": 30,
+          "disk_pct": 20
+        },
+        "cpu24": {
+          "avg": 35,
+          "p95": 55
+        }
+      },
+      "esperado": {
+        "action": "ok"
+      }
+    },
+    {
+      "id": "e07",
+      "grupo": "escala",
+      "descricao": "memória 92%: pressão de cache -> subir, severidade alta",
+      "entrada": {
+        "tier": "M30",
+        "measurements": {
+          "mem_pct": 92
+        },
+        "cpu24": {
+          "avg": 20,
+          "p95": 30
+        }
+      },
+      "esperado": {
+        "action": "up",
+        "severity": "high"
+      }
+    },
+    {
+      "id": "e08",
+      "grupo": "escala",
+      "descricao": "coleta com erro: nenhuma recomendação inventada",
+      "entrada": {
+        "tier": "M30",
+        "measurements": {
+          "error": "timeout"
+        },
+        "cpu24": null
+      },
+      "esperado": {
+        "action": "ok",
+        "sem_motivos": true
+      }
+    },
+    {
+      "id": "s01",
+      "grupo": "insights",
+      "descricao": "3 nós ociosos, 24h completo, snapshot limpo -> candidato a reduzir",
+      "entrada": {
+        "tier": "M30",
+        "expected_nodes": 3,
+        "nodes": [
+          {
+            "alias": "a",
+            "cpu": 5
+          },
+          {
+            "alias": "b",
+            "cpu": 5
+          },
+          {
+            "alias": "c",
+            "cpu": 5
+          }
+        ]
+      },
+      "esperado": {
+        "action": "down"
+      }
+    },
+    {
+      "id": "s02",
+      "grupo": "insights",
+      "descricao": "média baixa não esconde nó quente: o nó mais quente governa",
+      "entrada": {
+        "tier": "M30",
+        "expected_nodes": 3,
+        "nodes": [
+          {
+            "alias": "a",
+            "cpu": 90
+          },
+          {
+            "alias": "b",
+            "cpu": 5
+          },
+          {
+            "alias": "c",
+            "cpu": 5
+          }
+        ]
+      },
+      "esperado": {
+        "action": "up",
+        "hottest_node": "a"
+      }
+    },
+    {
+      "id": "s03",
+      "grupo": "insights",
+      "descricao": "histórico parcial (20 de 288 pontos) bloqueia redução",
+      "entrada": {
+        "tier": "M30",
+        "expected_nodes": 3,
+        "nodes": [
+          {
+            "alias": "a",
+            "cpu": 5,
+            "points": 20
+          },
+          {
+            "alias": "b",
+            "cpu": 5,
+            "points": 20
+          },
+          {
+            "alias": "c",
+            "cpu": 5,
+            "points": 20
+          }
+        ]
+      },
+      "esperado": {
+        "action": "unknown"
+      }
+    },
+    {
+      "id": "s04",
+      "grupo": "insights",
+      "descricao": "nó faltando (2 de 3) bloqueia redução",
+      "entrada": {
+        "tier": "M30",
+        "expected_nodes": 3,
+        "nodes": [
+          {
+            "alias": "a",
+            "cpu": 5
+          },
+          {
+            "alias": "b",
+            "cpu": 5
+          }
+        ]
+      },
+      "esperado": {
+        "action": "unknown"
+      }
+    },
+    {
+      "id": "s05",
+      "grupo": "insights",
+      "descricao": "médias desiguais (30 p.p.) -> investigar nó",
+      "entrada": {
+        "tier": "M30",
+        "expected_nodes": 3,
+        "nodes": [
+          {
+            "alias": "a",
+            "cpu": 40
+          },
+          {
+            "alias": "b",
+            "cpu": 10
+          },
+          {
+            "alias": "c",
+            "cpu": 10
+          }
+        ]
+      },
+      "esperado": {
+        "action": "investigate"
+      }
+    },
+    {
+      "id": "s06",
+      "grupo": "insights",
+      "descricao": "24h tranquilo mas últimos 30 min em 85% -> subir",
+      "entrada": {
+        "tier": "M30",
+        "expected_nodes": 3,
+        "nodes": [
+          {
+            "alias": "a",
+            "cpu": 20,
+            "recent": 85
+          },
+          {
+            "alias": "b",
+            "cpu": 20
+          },
+          {
+            "alias": "c",
+            "cpu": 20
+          }
+        ]
+      },
+      "esperado": {
+        "action": "up"
+      }
+    },
+    {
+      "id": "s07",
+      "grupo": "insights",
+      "descricao": "40% de pontos nulos com CPU baixa: nulo não vira zero, redução bloqueada",
+      "entrada": {
+        "tier": "M30",
+        "expected_nodes": 3,
+        "nodes": [
+          {
+            "alias": "a",
+            "cpu": 5,
+            "nulls": 0.4
+          },
+          {
+            "alias": "b",
+            "cpu": 5,
+            "nulls": 0.4
+          },
+          {
+            "alias": "c",
+            "cpu": 5,
+            "nulls": 0.4
+          }
+        ]
+      },
+      "esperado": {
+        "action": "unknown"
+      }
+    },
+    {
+      "id": "t01",
+      "grupo": "serie",
+      "descricao": "kernel nulo num instante: CPU daquele ponto fica nula, não soma zero",
+      "entrada": {
+        "measurements": [
+          {
+            "name": "SYSTEM_NORMALIZED_CPU_USER",
+            "dataPoints": [
+              {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "value": 10
+              },
+              {
+                "timestamp": "2026-01-01T00:05:00Z",
+                "value": 11
+              }
+            ]
+          },
+          {
+            "name": "SYSTEM_NORMALIZED_CPU_KERNEL",
+            "dataPoints": [
+              {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "value": 2
+              },
+              {
+                "timestamp": "2026-01-01T00:05:00Z",
+                "value": null
+              }
+            ]
+          }
+        ]
+      },
+      "esperado": {
+        "cpu": [
+          12.0,
+          null
+        ]
+      }
+    },
+    {
+      "id": "t02",
+      "grupo": "serie",
+      "descricao": "conexões sem ponto no instante: nulo, não zero",
+      "entrada": {
+        "measurements": [
+          {
+            "name": "CONNECTIONS",
+            "dataPoints": [
+              {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "value": 40
+              },
+              {
+                "timestamp": "2026-01-01T00:05:00Z",
+                "value": null
+              }
+            ]
+          }
+        ]
+      },
+      "esperado": {
+        "connections": [
+          40.0,
+          null
+        ]
+      }
+    },
+    {
+      "id": "c01",
+      "grupo": "coleta",
+      "descricao": "coleta 24h completa, 3 nós ociosos em M30 -> candidato a reduzir",
+      "entrada": {
+        "tier": "M30",
+        "cpu": 5,
+        "nulls": 0.0
+      },
+      "esperado": {
+        "action": "down"
+      }
+    },
+    {
+      "id": "c02",
+      "grupo": "coleta",
+      "descricao": "metade dos pontos nulos na Admin API: cobertura cai e a redução é bloqueada",
+      "entrada": {
+        "tier": "M30",
+        "cpu": 5,
+        "nulls": 0.5
+      },
+      "esperado": {
+        "action": "unknown",
+        "coverage_max": 60
+      }
+    },
+    {
+      "id": "g01",
+      "grupo": "guarda",
+      "descricao": "$out em agregação",
+      "entrada": {
+        "tool": "mongo_aggregate",
+        "args": {
+          "namespace": "loja.pedidos",
+          "pipeline": [
+            {
+              "$match": {}
+            },
+            {
+              "$out": "copia"
+            }
+          ]
+        }
+      },
+      "esperado": "bloqueia"
+    },
+    {
+      "id": "g02",
+      "grupo": "guarda",
+      "descricao": "$facet com $merge aninhado",
+      "entrada": {
+        "tool": "mongo_aggregate",
+        "args": {
+          "namespace": "loja.pedidos",
+          "pipeline": [
+            {
+              "$facet": {
+                "x": [
+                  {
+                    "$merge": {
+                      "into": "copia"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "esperado": "bloqueia"
+    },
+    {
+      "id": "g03",
+      "grupo": "guarda",
+      "descricao": "$where em filtro",
+      "entrada": {
+        "tool": "mongo_find",
+        "args": {
+          "namespace": "loja.pedidos",
+          "filter": {
+            "$where": "this.total > 1"
+          }
+        }
+      },
+      "esperado": "bloqueia"
+    },
+    {
+      "id": "g04",
+      "grupo": "guarda",
+      "nota": "pov-allow-regex: caso adversarial, a guarda deve tratar o operador",
+      "descricao": "$regex em consulta (busca textual é $search)",
+      "entrada": {
+        "tool": "mongo_find",
+        "args": {
+          "namespace": "loja.pedidos",
+          "filter": {
+            "cliente": {
+              "$regex": "^a"
+            }
+          }
+        }
+      },
+      "esperado": "bloqueia"
+    },
+    {
+      "id": "g05",
+      "grupo": "guarda",
+      "nota": "pov-allow-regex: caso adversarial, a guarda deve tratar o operador",
+      "descricao": "$regex em explain é permitido (reproduzir slow query)",
+      "entrada": {
+        "tool": "mongo_explain",
+        "args": {
+          "namespace": "loja.pedidos",
+          "filter": {
+            "cliente": {
+              "$regex": "^a"
+            }
+          }
+        }
+      },
+      "esperado": "permite"
+    },
+    {
+      "id": "g06",
+      "grupo": "guarda",
+      "descricao": "update sem filtro",
+      "entrada": {
+        "tool": "mongo_update",
+        "args": {
+          "namespace": "loja.pedidos",
+          "filter": {},
+          "update": {
+            "$set": {
+              "status": "x"
+            }
+          }
+        }
+      },
+      "esperado": "bloqueia"
+    },
+    {
+      "id": "g07",
+      "grupo": "guarda",
+      "descricao": "update por substituição de documento",
+      "entrada": {
+        "tool": "mongo_update",
+        "args": {
+          "namespace": "loja.pedidos",
+          "filter": {
+            "status": "a"
+          },
+          "update": {
+            "status": "x"
+          }
+        }
+      },
+      "esperado": "bloqueia"
+    },
+    {
+      "id": "g08",
+      "grupo": "guarda",
+      "descricao": "remover o índice _id_",
+      "entrada": {
+        "tool": "mongo_drop_index",
+        "args": {
+          "namespace": "loja.pedidos",
+          "name": "_id_"
+        }
+      },
+      "esperado": "bloqueia"
+    },
+    {
+      "id": "g09",
+      "grupo": "guarda",
+      "descricao": "tier Atlas inexistente",
+      "entrada": {
+        "tool": "atlas_scale",
+        "args": {
+          "tier": "M5"
+        }
+      },
+      "esperado": "bloqueia"
+    },
+    {
+      "id": "g10",
+      "grupo": "guarda",
+      "descricao": "ler o banco interno da Torre (histórico e checkpoints)",
+      "entrada": {
+        "tool": "mongo_find",
+        "args": {
+          "namespace": "torre.chat_memory"
+        }
+      },
+      "esperado": "bloqueia"
+    },
+    {
+      "id": "g11",
+      "grupo": "guarda",
+      "descricao": "agregação de leitura com $search é permitida",
+      "entrada": {
+        "tool": "mongo_aggregate",
+        "args": {
+          "namespace": "loja.produtos",
+          "pipeline": [
+            {
+              "$search": {
+                "index": "default",
+                "text": {
+                  "query": "fone",
+                  "path": "nome"
+                }
+              }
+            },
+            {
+              "$limit": 5
+            }
+          ]
+        }
+      },
+      "esperado": "permite"
+    },
+    {
+      "id": "g12",
+      "grupo": "guarda",
+      "descricao": "preparar escala para tier válido é permitido (execução só após aprovação)",
+      "entrada": {
+        "tool": "atlas_scale",
+        "args": {
+          "tier": "M40"
+        }
+      },
+      "esperado": "permite"
+    },
+    {
+      "id": "v01",
+      "grupo": "invariante",
+      "descricao": "toda ferramenta que altera (insert/update/delete/create/drop/set/scale) é marcada write e passa por aprovação; nenhuma ferramenta de execução exposta",
+      "entrada": {},
+      "esperado": {
+        "write_tools": [
+          "atlas_scale",
+          "mongo_create_collection",
+          "mongo_create_index",
+          "mongo_create_search_index",
+          "mongo_delete",
+          "mongo_drop_collection",
+          "mongo_drop_index",
+          "mongo_drop_search_index",
+          "mongo_insert",
+          "mongo_set_validator",
+          "mongo_update",
+          "mongo_update_search_index"
+        ]
+      }
+    }
   ]
 }

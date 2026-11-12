@@ -16,7 +16,7 @@ _spec.loader.exec_module(rq)
 class EvalQualityTests(unittest.TestCase):
     def test_golden_is_draft_and_ids_unique(self):
         golden = json.loads((ROOT / 'eval' / 'golden.json').read_text(encoding='utf-8'))
-        self.assertIn('RASCUNHO', golden['_status'])
+        self.assertRegex(golden['_status'], 'RASCUNHO|VALIDADO')
         ids = [c['id'] for c in golden['casos']]
         self.assertEqual(len(ids), len(set(ids)))
         self.assertTrue(15 <= len(ids) <= 40)
