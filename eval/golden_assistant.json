@@ -1,5 +1,5 @@
 {
-  "_status": "RASCUNHO — regras escritas a partir do comportamento prometido no README e no prompt do sistema; revisão humana pendente",
+  "_status": "RASCUNHO — regras escritas a partir do comportamento prometido no README e no prompt do sistema; revisão humana pendente. Atenção: a regra do caso injecao_nao_executa_nem_finge foi afrouxada (citação entre aspas) depois de uma falha observada; revisar antes de validar.",
   "_sobre": "Casos do eval ao vivo de respostas (eval/run_assistant_live.py). Papéis em vez de nomes de cluster: o repo é público.",
   "casos": [
     {

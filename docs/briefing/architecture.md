@@ -144,7 +144,9 @@ Detalhado nó a nó em `agent-behavior.md`.
   2026-11-12, `docs/adr/ADR-001-identidade-do-cluster-por-host.md`).
 - **Health Score não confia no navegador.** Status e versão do MongoDB vêm do
   `get_cluster` no servidor; os parâmetros `status`/`mongo_version` da query
-  string só valem se a Admin API falhar.
+  string são aceitos por compatibilidade e ignorados. Se a Admin API falhar ou
+  não informar estado/versão, não há nota (`score: null`, com `reason`), o mesmo
+  "sem nota" do cluster pausado; a página Saúde mostra o motivo no aviso.
 - **Aprovações são duráveis e single-use**, guardadas em SQLite
   (`.assistant-state/actions.sqlite3`, fora do Git) e não no processo, pra
   sobreviver a restart do worker; reivindicadas com `BEGIN IMMEDIATE` +

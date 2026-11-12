@@ -29,7 +29,7 @@ export default function Health({ clusters }) {
 
       {!hs && <Empty icon="🏥" title="Avalie a saúde do cluster" hint="Clique em Calcular Health Score para uma nota 0–100 com o detalhamento de cada componente e como melhorar." />}
       {hs && hs.score === null && (
-        <Banner variant="info">{hs.tips?.[0]?.text || 'Sem dados suficientes para calcular o score.'}</Banner>
+        <Banner variant="info">{hs.reason ? <><strong>{hs.reason}</strong> </> : null}{hs.tips?.[0]?.text || 'Sem dados suficientes para calcular o score.'}</Banner>
       )}
       {hs && hs.score !== null && (
         <>

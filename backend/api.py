@@ -394,26 +394,38 @@ def series(project_id: str, cluster_name: str):
     return client.get_measurements_series(project_id, pid)
 
 
+def _no_grade(reason: str, tip: str) -> dict:
+    """Health Score without a grade: the reason goes to the API and to the UI banner (tips[0])."""
+    return {"score": None, "grade": "—", "color": "#7fa8bc", "n_pa": 0, "n_sq": 0,
+            "components": [], "reason": reason, "issues": [reason],
+            "tips": [{"gain": 0, "text": tip}]}
+
+
 @app.get("/api/cluster/{project_id}/{cluster_name}/health")
 def health(project_id: str, cluster_name: str, status: str = "", mongo_version: str = "0"):
-    """Status and version come from Atlas, not from the caller: the query
-    parameters are legacy hints, used only if the Admin API read fails."""
+    """Status and version come only from Atlas. The `status`/`mongo_version`
+    query parameters are accepted for compatibility and IGNORED: a caller must
+    never be able to raise the grade. Without a trustworthy Atlas read there is
+    no grade (score None), the same honest answer as a paused cluster."""
     client = get_client()
     try:
-        cluster = client.get_cluster(project_id, cluster_name)
-        status = "PAUSED" if cluster.get("paused") else (cluster.get("stateName") or status)
-        mongo_version = cluster.get("mongoDBVersion") or mongo_version
+        cluster = client.get_cluster(project_id, cluster_name) or {}
     except Exception:
         logger.exception("health: get_cluster failed project_id=%s cluster=%s", project_id, cluster_name)
+        return _no_grade("Atlas Admin API indisponível — não foi possível ler o estado do cluster.",
+                         "Tente de novo em instantes; sem o estado real do Atlas a nota não é calculada.")
+    status = "PAUSED" if cluster.get("paused") else str(cluster.get("stateName") or "")
+    mongo_version = str(cluster.get("mongoDBVersion") or "")
+    if not status or not mongo_version:
+        return _no_grade("Atlas não informou o estado ou a versão do cluster.",
+                         "Sem estado e versão vindos do Atlas a nota não é calculada; confira o cluster no Atlas.")
     pid = client.get_primary(project_id, cluster_name)
     if not pid:
         # Paused/transitioning cluster: PA and profiler have no process to report
         # on — an honest "no grade" beats scoring 90 on absent data.
-        return {"score": None, "grade": "—", "color": "#7fa8bc", "n_pa": 0, "n_sq": 0,
-                "components": [],
-                "issues": ["Cluster pausado ou em transição — sem dados de PA/profiler."],
-                "tips": [{"gain": 0, "text": "Retome o cluster para calcular o Health Score — "
-                          "pausado, não há processo primário para o Performance Advisor e o profiler avaliarem."}]}
+        return _no_grade("Cluster pausado ou em transição — sem dados de PA/profiler.",
+                         "Retome o cluster para calcular o Health Score — "
+                         "pausado, não há processo primário para o Performance Advisor e o profiler avaliarem.")
 
     n_pa = n_sq = 0
     collscan_shapes = set()
