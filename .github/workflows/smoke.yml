@@ -86,7 +86,8 @@ jobs:
         if: steps.atlas.outputs.skip != 'true'
         run: |
           for _ in $(seq 1 60); do
-            if curl -fsS -o /dev/null "http://127.0.0.1:8080/api/health"; then
+            if curl -sS -o /dev/null "http://127.0.0.1:8080/api/health"; then
+            curl -sS http://127.0.0.1:8080/api/health | python3 -c 'import json,sys; j=json.load(sys.stdin); sys.exit(0 if (j["components"]["mongodb"] == "ready") else 1)' || { echo "::error::health /api/health respondeu, mas o corpo diz que nao esta ok"; exit 1; }
               echo "health ok"; exit 0
             fi
             sleep 3
