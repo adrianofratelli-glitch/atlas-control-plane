@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from backend.cluster_insights import collect as collect_insights
+from backend.cluster_identity import cluster_hosts, uri_hosts, uri_targets_cluster
 from backend.metrics_cache import cache as metrics_cache
 from backend import observability
 from backend.atlas_client import (
@@ -60,16 +61,15 @@ def pretty_region(code: str) -> str:
     return REGION_NAMES.get(code, code.replace("_", " ").title())
 
 
-def _uri_cluster_hash() -> str:
-    """Unique hash of the cluster MONGODB_URI points to ('' if unset/unparseable)."""
-    m = re.search(r'\.([a-z0-9]+)\.mongodb\.net', os.getenv("MONGODB_URI", "").lower())
-    return m.group(1) if m else ""
+def _uri_is_configured() -> bool:
+    return bool(uri_hosts(os.getenv("MONGODB_URI", "")))
 
 
-def _cluster_srv_hash(cluster: dict) -> str:
-    srv = (cluster.get("connectionStrings") or {}).get("standardSrv", "") or cluster.get("srvAddress", "")
-    m = re.search(r'\.([a-z0-9]+)\.mongodb\.net', str(srv).lower())
-    return m.group(1) if m else ""
+def _uri_targets(cluster: dict) -> bool:
+    """Whether MONGODB_URI points to THIS cluster. Compared by host name: the SRV
+    label after the cluster name is the PROJECT hash, shared by every cluster of
+    the project, so it is not identity (backend/cluster_identity.py)."""
+    return uri_targets_cluster(os.getenv("MONGODB_URI", ""), cluster)
 
 
 def _cpu_24h_stats(client: AtlasClient, project_id: str, process_id: str) -> Optional[dict]:
@@ -285,7 +285,6 @@ async def list_clusters():
 def _list_clusters_sync():
     client = get_client()
     rows = []
-    uri_hash = _uri_cluster_hash()
     try:
         projects = client.get_projects()
     except Exception as e:
@@ -317,7 +316,7 @@ def _list_clusters_sync():
                 "cluster_type": c.get("clusterType", "—"),
                 "cost_usd": cost["usd"], "cost_brl": cost["brl"],
                 # whether MONGODB_URI points to THIS cluster (gates index/explain actions)
-                "is_uri_target": bool(uri_hash) and _cluster_srv_hash(c) == uri_hash,
+                "is_uri_target": _uri_targets(c),
                 "autoscale_compute": bool(compute.get("enabled")),
                 "autoscale_min": compute.get("minInstanceSize", ""),
                 "autoscale_max": compute.get("maxInstanceSize", ""),
@@ -397,7 +396,15 @@ def series(project_id: str, cluster_name: str):
 
 @app.get("/api/cluster/{project_id}/{cluster_name}/health")
 def health(project_id: str, cluster_name: str, status: str = "", mongo_version: str = "0"):
+    """Status and version come from Atlas, not from the caller: the query
+    parameters are legacy hints, used only if the Admin API read fails."""
     client = get_client()
+    try:
+        cluster = client.get_cluster(project_id, cluster_name)
+        status = "PAUSED" if cluster.get("paused") else (cluster.get("stateName") or status)
+        mongo_version = cluster.get("mongoDBVersion") or mongo_version
+    except Exception:
+        logger.exception("health: get_cluster failed project_id=%s cluster=%s", project_id, cluster_name)
     pid = client.get_primary(project_id, cluster_name)
     if not pid:
         # Paused/transitioning cluster: PA and profiler have no process to report
@@ -451,7 +458,7 @@ def health(project_id: str, cluster_name: str, status: str = "", mongo_version: 
          "ok": q_pen == 0},
         {"label": "Versão do MongoDB", "earned": ver_pts, "max": 10,
          "detail": f"MongoDB {mongo_version}" + ("" if major >= 8 else
-                    " — 8.0 é a versão atual" if major == 7 else " — desatualizada (<7)"),
+                    " — atualize para 8.0+ (9.0 é a mais recente)" if major == 7 else " — desatualizada (<7)"),
          "ok": major >= 8},
         {"label": "Base", "earned": 10, "max": 10, "detail": "pontuação base", "ok": True},
     ]
@@ -469,7 +476,7 @@ def health(project_id: str, cluster_name: str, status: str = "", mongo_version: 
     elif q_pen:
         tips.append({"gain": q_pen, "text": f"Volume alto de slow queries ({n_sq}) — revise no **Query Profiler** para recuperar +{q_pen} pts."})
     if major < 8:
-        tips.append({"gain": 10 - ver_pts, "text": f"Atualize o MongoDB {mongo_version} → 8.0 — recupera +{10 - ver_pts} pts e melhora performance."})
+        tips.append({"gain": 10 - ver_pts, "text": f"Atualize o MongoDB {mongo_version} → 8.0+ — recupera +{10 - ver_pts} pts e melhora performance."})
     if status != "IDLE":
         tips.append({"gain": 10, "text": f"Cluster em {status} — a nota volta a +10 pts quando estabilizar em IDLE."})
     if not tips:
@@ -601,8 +608,7 @@ class ExplainBody(BaseModel):
 def _assert_uri_targets(project_id: Optional[str], cluster_name: Optional[str]):
     """409 if MONGODB_URI points to a different cluster than the one selected in
     the UI — otherwise the index/explain would silently run on the wrong cluster."""
-    uri_hash = _uri_cluster_hash()
-    if not (uri_hash and project_id and cluster_name):
+    if not (_uri_is_configured() and project_id and cluster_name):
         raise HTTPException(
             status_code=503,
             detail="Não foi possível validar o cluster-alvo da operação.",
@@ -615,13 +621,12 @@ def _assert_uri_targets(project_id: Optional[str], cluster_name: Optional[str]):
             status_code=503,
             detail="Atlas Admin API indisponível; operação recusada por segurança.",
         )
-    srv_hash = _cluster_srv_hash(cluster)
-    if not srv_hash:
+    if not cluster_hosts(cluster):
         raise HTTPException(
             status_code=503,
             detail="Atlas não retornou o endereço do cluster; operação recusada por segurança.",
         )
-    if srv_hash and srv_hash != uri_hash:
+    if not _uri_targets(cluster):
         raise HTTPException(status_code=409, detail=(
             f"MONGODB_URI aponta para outro cluster — a ação seria executada fora de "
             f"'{cluster_name}'. Ajuste o MONGODB_URI no .env do servidor."))
