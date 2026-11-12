@@ -177,6 +177,9 @@ Nenhuma ferramenta MCP grava no banco. O fluxo de duas fases:
 - Filtros/updates/validators são varridos recursivamente contra operadores
   que rodam JS/expressão arbitrária (`$where`, `$function`, `$accumulator`,
   além de `$out`/`$merge` bloqueados no pipeline).
+- Ferramentas `mongo_*` e a execução de aprovações chamam `api._assert_uri_targets`:
+  se o `MONGODB_URI` não compartilha host com o cluster selecionado, a ferramenta
+  devolve erro (409) em vez de ler/escrever no cluster errado (ADR-001).
 - Namespace vindo do modelo passa pela mesma gramática usada na criação de
   índice via UI (`api._assert_namespace_is_safe`).
 - `mongo_update`/`mongo_delete` exigem filtro não vazio, e travam em até 100
@@ -185,6 +188,17 @@ Nenhuma ferramenta MCP grava no banco. O fluxo de duas fases:
   recentes, retenção de 7 dias.
 - Rodada inteira: até 12 iterações do loop, 40 chamadas de ferramenta, tempo
   de execução ainda limitado pelo timeout HTTP do cliente.
+
+### Medição das respostas (eval ao vivo)
+
+`eval/run_assistant_live.py` roda turnos reais (Grove + MCP + Atlas) contra o
+gabarito `eval/golden_assistant.json` (rascunho, 6 casos endereçados por papel:
+`target`, `other`, `paused`) e confere com regras determinísticas, sem juiz LLM:
+ferramentas chamadas, cartões que continuam pendentes (o eval nunca aprova),
+percentuais de CPU que batem com as métricas reais (±1,5 pp), nenhum banco do
+cluster do `MONGODB_URI` quando outro cluster está selecionado e nenhuma
+afirmação de execução sob injeção de prompt. Checkpoints em `MONGODB_DB`
+terminado em `_test`; aprovações num SQLite temporário.
 
 ## 8. Observability do agente (Langfuse)
 

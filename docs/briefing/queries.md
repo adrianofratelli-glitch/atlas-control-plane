@@ -55,7 +55,7 @@ Coberto por teste (`tests/`).
 ### 2.1 `create_index_direct` — `backend/atlas_client.py:600-665`
 
 Único ponto de escrita **direta via pymongo** fora do assistente operacional.
-Chamado por `POST /api/index` (`backend/api.py:703-711`), que já validou namespace e
+Chamado por `POST /api/index` (`backend/api.py:708-716`), que já validou namespace e
 chaves antes de chegar aqui.
 
 ```python
@@ -88,12 +88,17 @@ lista fechada; no máximo 10 chaves por corpo. **Por que**: namespace vindo de
 UI indo direto pro driver é injeção esperando acontecer — coberto por teste,
 sem exigir cluster.
 
-### 2.3 `/api/explain` — `backend/api.py:672-700`
+### 2.3 `/api/explain` — `backend/api.py:677-705`
+
+Antes do driver, `_assert_uri_targets` (`backend/api.py:608`) exige que o `MONGODB_URI`
+compartilhe um host com o cluster selecionado (`backend/cluster_identity.py`, ADR-001):
+cluster irmão do mesmo projeto → 409; Admin API fora ou cluster sem host publicado → 503.
+A mesma guarda vale para `/api/index` e para as ferramentas `mongo_*` do assistente.
 
 Roda `explain("executionStats")` real via `mc[db_name].command("explain",
 {"find": coll, "filter": body.filter}, verbosity="executionStats")`
-(`backend/api.py:625-626`). Filtro passa por `_assert_filter_is_safe`
-(`backend/api.py:600-609`), que rejeita recursivamente `$where`, `$function`,
+(`backend/api.py:690-691`). Filtro passa por `_assert_filter_is_safe`
+(`backend/api.py:664-674`), que rejeita recursivamente `$where`, `$function`,
 `$accumulator`, `$expr` — operadores que rodam JS/expressão arbitrária no
 servidor. Devolve stage vencedor, `totalDocsExamined`, `totalKeysExamined`,
 `nReturned`, tempo e índice usado (ou `"COLLSCAN (sem índice)"`). É o que

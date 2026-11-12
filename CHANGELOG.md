@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Segurança (núcleo): a identidade do cluster-alvo das ações diretas (explain, criar índice, ferramentas `mongo_*` do assistente, execução de aprovações) comparava só o hash do host SRV, que é do **projeto**; com vários clusters no mesmo projeto, uma ação para o cluster B rodava no cluster do `MONGODB_URI`. Agora a comparação é por host (`backend/cluster_identity.py`, ADR-001); `is_uri_target` marca um único cluster. Testes em `tests/test_cluster_identity.py`.
+- Health Score: status e versão vêm do Atlas no servidor (a query string vira só fallback); antes, uma chamada sem parâmetros dava "Status (em transição)" e "MongoDB 0" para um cluster IDLE. Texto de versão atualizado (8.0+; 9.0 é a mais recente).
+- Eval: `eval/run_assistant_live.py` + `eval/golden_assistant.json` (rascunho, 6 casos) medem as respostas do assistente ao vivo com regras determinísticas; antes do fix de identidade 4/6 (uma das falhas era falso positivo da regra, corrigido; a outra, o assistente listando bancos do cluster do `MONGODB_URI` com outro cluster selecionado), 6/6 depois.
 - Estrutura: o código de runtime saiu da raiz para o pacote `backend/` (api, atlas_client, assistant_*, ai_agent, chat_memory, cluster_insights, llm_gateway, metrics_cache, observability, tracing, torre_mcp_server) e os utilitários de linha de comando (`populate_workload.py`, `populate_profiler.py`, `stress_readonly.py`) foram para `scripts/`. Imports passam a ser `backend.*`; o servidor sobe com `uvicorn backend.api:app` e o servidor MCP com `python -m backend.torre_mcp_server`. `run_react.sh`, `docker/start.sh`, Dockerfile, CI, testes e docs foram atualizados. Sem mudança de comportamento.
 - Atualiza dependências compatíveis e pisos de segurança; alinha metadados de versão entre aplicação e frontend.
 

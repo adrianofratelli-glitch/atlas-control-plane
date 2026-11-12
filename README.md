@@ -132,7 +132,7 @@ venv/bin/python -m unittest discover -s tests -v
 cd frontend && node --test tests/*.test.mjs
 ```
 
-Offline, no credentials needed: scaling heuristic, injection guards, chat-memory ids, the assistant graph, and `tests/test_hardening_adversarial.py` (gateway fail-closed and 429/5xx retry, PII never reaching Langfuse, prompt injection and tool abuse, hostile ids and payloads, Atlas 429/5xx/timeouts, concurrent approvals, reset guard) and `tests/test_bootstrap_docs_and_slow_log.py` (docs never ask for a direct provider key, the Docker build always gets the `shared` context, slow-log cap, `/scaling` without `tier`). Tests force the in-memory checkpointer, so they never write to a real database.
+Offline, no credentials needed: scaling heuristic, cluster identity (`tests/test_cluster_identity.py`: `MONGODB_URI` must match the selected cluster by host, never by the project-wide SRV hash), Health Score read from Atlas, injection guards, chat-memory ids, the assistant graph, and `tests/test_hardening_adversarial.py` (gateway fail-closed and 429/5xx retry, PII never reaching Langfuse, prompt injection and tool abuse, hostile ids and payloads, Atlas 429/5xx/timeouts, concurrent approvals, reset guard) and `tests/test_bootstrap_docs_and_slow_log.py` (docs never ask for a direct provider key, the Docker build always gets the `shared` context, slow-log cap, `/scaling` without `tier`). Tests force the in-memory checkpointer, so they never write to a real database.
 
 ## Quality evaluation (avaliação de qualidade)
 
@@ -142,9 +142,17 @@ venv/bin/python eval/run_quality.py --out /tmp/torre_quality.json   # ~1 s, offl
 
 Measures what is deterministic in the PoV's value, with synthetic fixtures (no Atlas, no LLM): the scaling heuristic (`AtlasClient.recommend_scaling`: high CPU → scale up, idle → scale down, M10 never down, off-peak snapshot does not trigger a downsize), the fleet insights (`cluster_insights.summarize`/`collect`: hottest node governs, partial history or a missing node blocks a downsize, null points stay null instead of becoming zero load), and the assistant guards (`ClusterTools.validate`: `$out`/`$merge`/`$where`/`$regex`, update without filter, `_id_` drop, invalid tier, Torre's internal database). Metrics: accuracy, unsafe operations accepted, safe ones blocked, wrong downsizes. 2026-11-12: 32/32, 0/0/0. The golden set in `eval/golden.json` was **reviewed and validated** on 2026-11-12.
 
+### Live answer eval (avaliação das respostas do assistente)
+
+```bash
+venv/bin/python eval/run_assistant_live.py --out /tmp/torre_assistant_live.json   # ~2 min, real Atlas + Grove + MCP
+```
+
+Runs real assistant turns and checks the answers with deterministic rules (no LLM judge): required tools, approval cards that stay pending (nothing is ever approved), CPU percentages that match the cluster's real metrics, no data from the `MONGODB_URI` cluster when another cluster is selected, no claimed execution under prompt injection. Clusters are addressed by role (`target`, `other`, `paused`), never by name. Checkpoints go to `MONGODB_DB` (must end in `_test`, default `torre_test`). 2026-11-12: before the cluster-identity fix ([ADR-001](docs/adr/ADR-001-identidade-do-cluster-por-host.md)) the assistant listed the `MONGODB_URI` cluster's databases while another cluster was selected (4/6, one of the two failures being a rule false positive later fixed); after, 6/6. `eval/golden_assistant.json` is a **draft** awaiting human review.
+
 ## Production boundary
 
-Set a long, random `API_AUTH_TOKEN`; it protects the API routes and metrics while liveness stays public. Atlas errors are logged on the server and sanitized for clients, and index definitions accept only a safe field/direction per key. The image runs as UID 10001 behind nginx with security headers. In shared environments, prefer a real IdP/API gateway and private egress to Atlas.
+Set a long, random `API_AUTH_TOKEN`; it protects the API routes and metrics while liveness stays public. Index creation, explain and the assistant's data tools run only when `MONGODB_URI` shares a host with the selected cluster (409 otherwise; [ADR-001](docs/adr/ADR-001-identidade-do-cluster-por-host.md)). Atlas errors are logged on the server and sanitized for clients, and index definitions accept only a safe field/direction per key. The image runs as UID 10001 behind nginx with security headers. In shared environments, prefer a real IdP/API gateway and private egress to Atlas.
 
 ## Layout
 
@@ -158,10 +166,13 @@ backend/            runtime Python (pacote importavel: uvicorn backend.api:app)
   tracing.py        Langfuse traces, masked before creation (fail-open)
   chat_memory.py    chat history in Atlas
   observability.py  structured logs + /api/metrics
+  cluster_identity.py which cluster MONGODB_URI points to (by host)
   cluster_insights.py, metrics_cache.py, torre_mcp_server.py
 scripts/            reset_demo.py, populate_workload.py, populate_profiler.py, stress_readonly.py
 frontend/src/pages/ one component per page
 tests/              offline unittest suite
+eval/               run_quality.py (offline, 32 cases), run_assistant_live.py (live answers)
+docs/adr/           architecture decisions
 ```
 
 ## Credits

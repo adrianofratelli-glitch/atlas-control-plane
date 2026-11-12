@@ -90,7 +90,9 @@ que está lento, o `explain` diz por quê.
 
 Alertas abertos e o score, com os problemas que o compõem, consolidados numa
 tela só (sem abrir páginas de diagnóstico separadas). Consome
-`/cluster/.../health`.
+`/cluster/.../health`; status e versão do cluster são lidos do Atlas no servidor.
+Os botões de criar índice e explain só aparecem no cluster com `is_uri_target`
+(um único cluster: o do `MONGODB_URI`, conferido por host).
 
 ### Scale — `docs/screenshots/03-scale.png`
 

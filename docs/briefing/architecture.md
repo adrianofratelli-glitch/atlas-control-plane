@@ -34,6 +34,7 @@ Admin API — não um resumo pré-mastigado.
 | Arquivo | Papel |
 |---|---|
 | `backend/api.py` | backend FastAPI, todas as rotas `/api/...`, middleware de request-id e métricas, auth opcional por bearer token |
+| `backend/cluster_identity.py` | decide se o `MONGODB_URI` aponta para o cluster selecionado, por interseção de hosts (ADR-001) |
 | `backend/atlas_client.py` | cliente da Atlas Admin API v2 + heurística determinística de recomendação de escala |
 | `backend/ai_agent.py` | utilitários de uso do modelo, renderização de PDF e helpers legados; rotas da UI usam o runtime MCP |
 | `backend/chat_memory.py` | histórico de chat persistido no Atlas via pymongo (ver `queries.md`) |
@@ -134,6 +135,16 @@ Detalhado nó a nó em `agent-behavior.md`.
   processo que a lista devolver (`backend/atlas_client.py:203-273`, usa o hash do
   cluster na `connectionString`, porque nomes genéricos de cluster colidem com
   "mongodb" no hostname de qualquer cluster).
+- **Identidade do cluster pelo host, não pelo hash do projeto.** Explain, criar
+  índice, ferramentas `mongo_*` e execução de aprovações só rodam se os hosts do
+  `MONGODB_URI` aparecem nos `connectionStrings` que a Admin API publica para o
+  cluster selecionado (`backend/cluster_identity.py`, `api._assert_uri_targets`).
+  O segundo rótulo do host SRV é compartilhado por todos os clusters do projeto;
+  compará-lo sozinho deixava uma ação do cluster B rodar no A (achado ao vivo em
+  2026-11-12, `docs/adr/ADR-001-identidade-do-cluster-por-host.md`).
+- **Health Score não confia no navegador.** Status e versão do MongoDB vêm do
+  `get_cluster` no servidor; os parâmetros `status`/`mongo_version` da query
+  string só valem se a Admin API falhar.
 - **Aprovações são duráveis e single-use**, guardadas em SQLite
   (`.assistant-state/actions.sqlite3`, fora do Git) e não no processo, pra
   sobreviver a restart do worker; reivindicadas com `BEGIN IMMEDIATE` +
