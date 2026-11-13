@@ -204,12 +204,14 @@ terminado em `_test`; aprovações num SQLite temporário.
 
 `backend/tracing.py` — fail-open: sem `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` no
 `.env`, todas as chamadas viram no-op e o turno segue normal. A conexão roda numa thread de
-fundo (`tracing.warm_up`, disparada na subida do `backend/api.py` e de novo quando a janela de
-nova tentativa vence), nunca dentro do turno: um `GET /api/public/health` com prazo de 2 s diz se
+fundo (`tracing.warm_up`, disparada no lifespan do FastAPI, isto é, quando o servidor sobe e não
+quando o módulo é importado, e de novo quando a janela de nova tentativa vence), nunca dentro do turno: um `GET /api/public/health` com prazo de 2 s diz se
 o host responde e um `auth_check()` confere a credencial, para nunca expor um link que dê 404 no
 meio de uma demo. O turno só lê o estado; enquanto não há client, segue sem trace. Client
-recusado ou que deixa de responder é encerrado (`shutdown`) numa thread de fundo, sem vazar
-threads nem conexões. O `reason` de `/api/metrics` não traz o host (só o log do servidor traz). Com o Langfuse
+recusado, que deixa de responder ou substituído é encerrado (`shutdown`) numa thread de fundo,
+sem vazar threads nem conexões; log atrasado de um client já descartado conta no contador mas não
+derruba o client novo. Os testes rodam com as chaves do Langfuse vazias (`tests/conftest.py` e
+`tests/test_000_isolation.py`, que também prova que importar `backend.api` não abre conexão). O `reason` de `/api/metrics` não traz o host (só o log do servidor traz). Com o Langfuse
 fora do ar: **um** aviso por queda (com a causa: host sem resposta, HTTP ruim ou credencial
 recusada), as linhas do próprio SDK ("Unexpected error occurred…") viram o contador
 `langfuse_sdk_errors` em vez de sujar o log, cada turno sem trace soma em

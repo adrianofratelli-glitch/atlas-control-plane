@@ -15,6 +15,7 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from threading import Lock
 from typing import Literal, Optional
 from uuid import uuid4
@@ -41,7 +42,6 @@ from backend.llm_gateway import gateway_configured
 load_dotenv()
 observability.setup_logging()
 from backend import tracing  # noqa: E402 — after load_dotenv: reads LANGFUSE_* at call time
-tracing.warm_up()  # Langfuse probe + auth_check in a background thread, never inside a turn
 logger = logging.getLogger("torre")
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -144,7 +144,15 @@ def _validate_atlas_path_params(request: Request):
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
-app = FastAPI(title="Torre Atlas Control Plane API", version="3.2.1",
+@asynccontextmanager
+async def _lifespan(_app):
+    # Langfuse probe + auth_check start when the SERVER starts (background thread, never inside
+    # a turn), not when the module is imported: importing backend.api opens no connection.
+    tracing.warm_up()
+    yield
+
+
+app = FastAPI(title="Torre Atlas Control Plane API", version="3.2.1", lifespan=_lifespan,
               dependencies=[Depends(_validate_atlas_path_params)])
 
 

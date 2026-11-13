@@ -68,9 +68,7 @@ def _wait(predicate, timeout=2.0):
 
 class TracingFailOpenTests(unittest.TestCase):
     def setUp(self):
-        stray = tracing._connect_thread  # e.g. the warm_up() started when backend.api was imported
-        if stray is not None:
-            stray.join(timeout=5)
+        self.assertIsNone(tracing._connect_thread, "nothing may start a Langfuse connection outside these tests")
         self.saved = (tracing._client, tracing._retry_at, dict(tracing._state))
         tracing._client, tracing._retry_at = None, 0.0
         tracing._state.update(status="pending", reason=None, warned=False)
@@ -89,6 +87,7 @@ class TracingFailOpenTests(unittest.TestCase):
     def tearDown(self):
         if tracing._connect_thread is not None:
             tracing._connect_thread.join(timeout=5)
+        tracing._connect_thread = None
         self.fake_module.stop()
         self.env.stop()
         logging.getLogger().removeHandler(self.capture)
@@ -191,6 +190,36 @@ class TracingFailOpenTests(unittest.TestCase):
         self.assertEqual(observability.metrics.counters["langfuse_sdk_errors"], 4)
         self.assertEqual(tracing.status()["status"], "unreachable")
         self.assertTrue(_wait(lambda: live.shutdowns == 1), "dropped client must be shut down exactly once")
+
+    def test_late_flush_of_a_dropped_client_does_not_degrade_the_new_one(self):
+        old_flusher_ready, old_flusher_go, done = threading.Event(), threading.Event(), threading.Event()
+
+        class ThreadedFake(FakeLangfuse):
+            def __init__(self):
+                super().__init__()
+                if len(FakeLangfuse.instances) == 1:  # the first client owns a consumer thread
+                    def consumer():
+                        old_flusher_ready.set()
+                        old_flusher_go.wait(5)
+                        logging.getLogger("langfuse").error("Unexpected error occurred.")  # late flush
+                        done.set()
+                    threading.Thread(target=consumer, daemon=True).start()
+
+        with patch.dict(sys.modules, {"langfuse": SimpleNamespace(Langfuse=ThreadedFake)}), \
+                patch.object(tracing, "_probe", return_value=None):
+            self._connect_now()
+            old = FakeLangfuse.instances[0]
+            self.assertTrue(old_flusher_ready.wait(2))
+            tracing._degrade("unreachable", "envio de eventos falhou")  # old client dropped
+            tracing._retry_at = 0.0
+            self._connect_now()  # new client
+            self.assertIsNotNone(self._turn())
+            old_flusher_go.set()
+            self.assertTrue(done.wait(2))
+        self.assertEqual(tracing.status()["status"], "ok", "old client's flush degraded the new client")
+        self.assertIs(tracing._client, FakeLangfuse.instances[1])
+        self.assertTrue(_wait(lambda: old.shutdowns == 1))
+        self.assertEqual(observability.metrics.counters["langfuse_sdk_errors"], 1)
 
     def test_without_keys_is_off_and_silent(self):
         with patch.dict(os.environ, {"LANGFUSE_PUBLIC_KEY": "", "LANGFUSE_SECRET_KEY": ""}), \

@@ -100,6 +100,10 @@ _lock = threading.Lock()
 _state = {"status": "pending", "reason": None, "warned": False}
 _retry_at = 0.0
 _connect_thread: threading.Thread | None = None  # the probe + auth_check never run inside a turn
+# SDK threads of clients already dropped (consumers + their shutdown thread): their late log lines
+# (an old flush failing) are counted but must not degrade the client that replaced them.
+_retired_threads: set[int] = set()
+_client_threads: dict[int, set[int]] = {}  # id(client) -> idents of the threads it started
 
 
 def _host() -> str:
@@ -122,6 +126,8 @@ def _shutdown_quietly(client) -> None:
     """
     if not client:
         return
+    with _lock:
+        _retired_threads.update(_client_threads.pop(id(client), set()))
 
     def run():
         try:
@@ -129,7 +135,10 @@ def _shutdown_quietly(client) -> None:
         except Exception:  # noqa: BLE001
             logger.debug("shutdown do client Langfuse falhou", exc_info=True)
 
-    threading.Thread(target=run, name="langfuse-shutdown", daemon=True).start()
+    thread = threading.Thread(target=run, name="langfuse-shutdown", daemon=True)
+    thread.start()
+    with _lock:
+        _retired_threads.add(thread.ident)
 
 
 def _degrade(status: str, reason: str) -> None:
@@ -164,7 +173,9 @@ class _SdkLogSink(logging.Handler):
         if record.levelno < logging.WARNING:
             return
         _bump("langfuse_sdk_errors")
-        if _client:  # a live client started failing (e.g. self-host went down mid-demo)
+        if record.thread in _retired_threads:
+            return  # a dropped client's late flush: not about the current client
+        if _client:  # the live client started failing (e.g. self-host went down mid-demo)
             _degrade("unreachable", "envio de eventos falhou")
 
 
@@ -205,7 +216,10 @@ def _connect() -> None:
     candidate = None
     try:
         from langfuse import Langfuse
+        before = {t.ident for t in threading.enumerate()}
         candidate = Langfuse()
+        with _lock:  # the SDK starts its consumer threads in the constructor
+            _client_threads[id(candidate)] = {t.ident for t in threading.enumerate()} - before
         # auth_check runs once per (re)connection. Without it the SDK is fire-and-forget:
         # the UI would show a "Ver no Langfuse" link that 404s in the middle of a live demo.
         if not candidate.auth_check():
@@ -214,13 +228,16 @@ def _connect() -> None:
         _shutdown_quietly(candidate)  # its consumer threads and HTTP pool would leak otherwise
         _degrade("auth", "credencial recusada ou SDK incompatível (auth_check falhou)")
         return
+    previous = None
     with _lock:
         if _client is False:  # disabled meanwhile (tests)
             recovered = None
         else:
             recovered = _state["warned"]
+            previous = _client if _client and _client is not candidate else None
             _client = candidate
             _state.update(status="ok", reason=None, warned=False)
+    _shutdown_quietly(previous)  # never two live clients
     if recovered is None:
         _shutdown_quietly(candidate)
     elif recovered:
@@ -233,6 +250,8 @@ def warm_up() -> threading.Thread | None:
     if not _configured() or _client is False or _client:
         return None
     with _lock:
+        if _client is False or _client:  # rechecked under the lock: another thread may have connected
+            return None
         if (_connect_thread and _connect_thread.is_alive()) or time.monotonic() < _retry_at:
             return None
         _connect_thread = threading.Thread(target=_connect, name="langfuse-connect", daemon=True)
