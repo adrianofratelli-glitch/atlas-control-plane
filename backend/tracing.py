@@ -5,12 +5,17 @@ Langfuse: a trace nasce com o texto já mascarado.
 
 Fail-open by design: sem LANGFUSE_PUBLIC_KEY/SECRET_KEY configurados, todo
 método vira no-op — a demo nunca quebra por causa de observability. O client
-é lazy-instanciado uma vez por processo.
+é lazy-instanciado uma vez por processo. Com o Langfuse fora do ar: um aviso só
+por queda (sem o "Unexpected error" do SDK a cada turno), turnos sem trace,
+contadores `langfuse_*` em /api/metrics e nova tentativa silenciosa a cada
+LANGFUSE_RETRY_SECONDS (padrão 300).
 """
 
 import logging
 import os
 import re
+import threading
+import time
 
 logger = logging.getLogger("poc.tracing")
 
@@ -79,31 +84,126 @@ def mask_for_trace(value, _depth: int = 0):
         return [mask_for_trace(v, _depth + 1) for v in value]
     return value
 
-_client = None
-_enabled = bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))
+_client = None  # None = not built yet (or degraded, see _retry_at); False = disabled for good (tests)
+
+
+def _configured() -> bool:
+    """Read at call time: api.py runs load_dotenv() after some backend modules are imported."""
+    return bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))
+
+# While Langfuse is unavailable, turns run without a trace and the probe is retried silently
+# after this many seconds (the self-host may come back without restarting the PoV).
+RETRY_SECONDS = float(os.getenv("LANGFUSE_RETRY_SECONDS", "300"))
+PROBE_TIMEOUT_S = 2.0
+
+_lock = threading.Lock()
+_state = {"status": "pending", "reason": None, "warned": False}
+_retry_at = 0.0
+
+
+def _host() -> str:
+    return (os.getenv("LANGFUSE_HOST") or os.getenv("LANGFUSE_BASE_URL") or "https://cloud.langfuse.com").rstrip("/")
+
+
+def _bump(name: str) -> None:
+    try:
+        from backend import observability
+        observability.metrics.bump(name)
+    except Exception:  # noqa: BLE001 — metrics never break tracing
+        pass
+
+
+def _degrade(status: str, reason: str) -> None:
+    """Langfuse unavailable: ONE warning per outage, then silence (counters keep counting)."""
+    global _client, _retry_at
+    with _lock:
+        _client = None if _client is not False else False
+        _retry_at = time.monotonic() + RETRY_SECONDS
+        first = not _state["warned"]
+        _state.update(status=status, reason=reason, warned=True)
+    _bump("langfuse_unavailable")
+    if first:
+        logger.warning("Langfuse indisponível (%s): turnos seguem sem trace; nova tentativa silenciosa a cada %ds. "
+                       "Contadores em /api/metrics (langfuse_*).", reason, int(RETRY_SECONDS))
+    else:
+        logger.debug("Langfuse segue indisponível (%s)", reason)
+
+
+class _SdkLogSink(logging.Handler):
+    """Swallows the Langfuse SDK's own log lines ("Unexpected error occurred...").
+
+    Without this, a self-host that is down prints an SDK ERROR on every auth check and
+    every background flush. Each swallowed WARNING+ line becomes a counter; while a client
+    is live, the first one marks Langfuse degraded (one warning, via _degrade).
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.levelno < logging.WARNING:
+            return
+        _bump("langfuse_sdk_errors")
+        if _client:  # a live client started failing (e.g. self-host went down mid-demo)
+            _degrade("unreachable", "envio de eventos falhou")
+
+
+def _install_sdk_log_sink() -> None:
+    sdk = logging.getLogger("langfuse")
+    if not any(isinstance(h, _SdkLogSink) for h in sdk.handlers):
+        sdk.addHandler(_SdkLogSink())
+        sdk.propagate = False
+
+
+def _probe(host: str) -> tuple[str, str] | None:
+    """Cheap health check before touching the SDK. Returns (status, reason) on failure."""
+    try:
+        import httpx
+        r = httpx.get(f"{host}/api/public/health", timeout=PROBE_TIMEOUT_S)
+    except Exception as e:  # noqa: BLE001
+        return "unreachable", f"{host} não responde ({type(e).__name__})"
+    if r.status_code != 200:
+        return "unhealthy", f"{host}/api/public/health devolveu HTTP {r.status_code}"
+    return None
+
+
+def status() -> dict:
+    """Tracing state for /api/metrics: off | pending | ok | unreachable | unhealthy | auth."""
+    if not _configured() or _client is False:
+        return {"status": "off", "reason": None}
+    return {"status": _state["status"], "reason": _state["reason"]}
 
 
 def _get_client():
     global _client
-    if not _enabled:
+    if not _configured() or _client is False:
         return None
-    if _client is None:
-        try:
-            from langfuse import Langfuse
-            candidate = Langfuse()
-            # auth_check é síncrono e rápido (uma chamada), mas SÓ roda uma vez por
-            # processo (client é cacheado). Sem isso, um Langfuse fora do ar não
-            # impede a criação da trace (o SDK é fire-and-forget) — o turno segue
-            # normal, mas a UI mostraria um link "Ver no Langfuse" que dá 404 no
-            # meio de uma demo ao vivo. Aqui a feature inteira fica invisível em
-            # vez de visível-e-quebrada.
-            if not candidate.auth_check():
-                raise RuntimeError("Langfuse auth_check falhou")
-            _client = candidate
-        except Exception:  # noqa: BLE001 — tracing nunca derruba o turno
-            logger.warning("Langfuse indisponível/mal configurado; tracing desligado para este processo")
-            _client = False
-    return _client or None
+    if _client:
+        return _client
+    if time.monotonic() < _retry_at:
+        _bump("langfuse_trace_skipped")
+        return None
+    _install_sdk_log_sink()
+    failure = _probe(_host())
+    if failure:
+        _degrade(*failure)
+        _bump("langfuse_trace_skipped")
+        return None
+    try:
+        from langfuse import Langfuse
+        candidate = Langfuse()
+        # auth_check runs once per (re)connection. Without it the SDK is fire-and-forget:
+        # the UI would show a "Ver no Langfuse" link that 404s in the middle of a live demo.
+        if not candidate.auth_check():
+            raise RuntimeError("auth_check")
+    except Exception:  # noqa: BLE001 — tracing never breaks the turn
+        _degrade("auth", "credencial recusada ou SDK incompatível (auth_check falhou)")
+        _bump("langfuse_trace_skipped")
+        return None
+    with _lock:
+        recovered = _state["warned"]
+        _client = candidate
+        _state.update(status="ok", reason=None, warned=False)
+    if recovered:
+        logger.info("Langfuse disponível de novo; traces retomadas")
+    return _client
 
 
 def start_trace(*, name: str, user_id: str, session_id: str, input_text: str,

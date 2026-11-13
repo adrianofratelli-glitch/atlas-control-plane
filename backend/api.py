@@ -208,8 +208,9 @@ async def _request_observability(request: Request, call_next):
 
 @app.get("/api/metrics")
 def api_metrics():
-    """In-process counters: requests/errors/latency per route + business counters."""
-    return observability.metrics.snapshot()
+    """In-process counters: requests/errors/latency per route + business counters + tracing state."""
+    from backend import tracing
+    return {**observability.metrics.snapshot(), "tracing": tracing.status()}
 
 
 @app.get("/metrics", include_in_schema=False)
