@@ -55,7 +55,7 @@ Coberto por teste (`tests/`).
 ### 2.1 `create_index_direct` — `backend/atlas_client.py:600-665`
 
 Único ponto de escrita **direta via pymongo** fora do assistente operacional.
-Chamado por `POST /api/index` (`backend/api.py:755-763`), que já validou namespace e
+Chamado por `POST /api/index` (`backend/api.py:756-764`), que já validou namespace e
 chaves antes de chegar aqui.
 
 ```python
@@ -88,21 +88,21 @@ lista fechada; no máximo 10 chaves por corpo. **Por que**: namespace vindo de
 UI indo direto pro driver é injeção esperando acontecer — coberto por teste,
 sem exigir cluster.
 
-### 2.3 `/api/explain` — `backend/api.py:723-749`
+### 2.3 `/api/explain` — `backend/api.py:724-750`
 
-Antes do driver, `_assert_uri_targets` (`backend/api.py:624`) exige que o `MONGODB_URI`
+Antes do driver, `_assert_uri_targets` (`backend/api.py:625`) exige que o `MONGODB_URI`
 compartilhe um host com o cluster selecionado (`backend/cluster_identity.py`, ADR-001):
 cluster irmão do mesmo projeto → 409; Admin API fora ou cluster sem host publicado → 503.
 A mesma guarda vale para `/api/index` e para as ferramentas `mongo_*` do assistente.
 
 Roda `explain("executionStats")` real via `mc[db_name].command("explain",
 {"find": coll, "filter": filter, "sort": sort, "limit": limit, "maxTimeMS": 10000},
-verbosity="executionStats")` (`backend/api.py:735-745`). `sort` (só 1/-1, campos validados) e
+verbosity="executionStats")` (`backend/api.py:736-746`). `sort` (só 1/-1, campos validados) e
 `limit` (1–100) são opcionais e vêm da consulta capturada no slow log: o filtro sozinho não
 mostra se um índice atende a ordenação. Filtro passa por `_assert_filter_is_safe`
-(`backend/api.py:680-690`), que rejeita recursivamente `$where`, `$function`,
+(`backend/api.py:681-691`), que rejeita recursivamente `$where`, `$function`,
 `$accumulator`, `$expr` — operadores que rodam JS/expressão arbitrária no
-servidor. `summarize_explain` (`backend/api.py:706`) percorre o plano vencedor inteiro (inclui o
+servidor. `summarize_explain` (`backend/api.py:707`) percorre o plano vencedor inteiro (inclui o
 `queryPlan` do SBE) e devolve a cadeia de stages (ex.: `SORT → FETCH → IXSCAN`),
 `totalDocsExamined`, `totalKeysExamined`, `nReturned`, tempo e os índices usados (ou
 `"COLLSCAN (sem índice)"`). Até 2026-11-13 o índice era procurado só um nível abaixo da raiz, e um
