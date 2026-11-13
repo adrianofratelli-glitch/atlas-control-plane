@@ -614,6 +614,9 @@ class IndexBody(BaseModel):
 class ExplainBody(BaseModel):
     namespace: str = Field(..., min_length=3, max_length=255)
     filter: dict = Field(default_factory=dict)
+    # sort/limit of the captured find: a filter alone does not show whether an index serves the sort
+    sort: Optional[dict] = Field(default=None, max_length=10)
+    limit: Optional[int] = Field(default=None, ge=1, le=100)
     project_id: str = Field(..., min_length=1, max_length=64, pattern=PROJECT_ID_PATTERN)
     cluster_name: str = Field(..., min_length=1, max_length=64, pattern=CLUSTER_NAME_PATTERN)
 
@@ -687,35 +690,66 @@ def _assert_filter_is_safe(value):
             _assert_filter_is_safe(item)
 
 
+def _plan_stages(node, out=None):
+    """All stages of a winning plan, depth-first (classic engine and SBE `queryPlan`)."""
+    out = [] if out is None else out
+    if isinstance(node, dict):
+        if node.get("stage"):
+            out.append(node)
+        for key in ("queryPlan", "inputStage", "outerStage", "innerStage"):
+            _plan_stages(node.get(key), out)
+        for child in node.get("inputStages") or []:
+            _plan_stages(child, out)
+    return out
+
+
+def summarize_explain(plan: dict) -> dict:
+    """Explain output -> what the Profiler shows. The index is looked up in the WHOLE plan:
+    SORT/FETCH/PROJECTION on top of an IXSCAN is still an indexed plan."""
+    exe = plan.get("executionStats", {})
+    stages = _plan_stages(plan.get("queryPlanner", {}).get("winningPlan", {}))
+    names = [st["stage"] for st in stages]
+    indexes = [st["indexName"] for st in stages if st.get("indexName")]
+    return {
+        "stage": " → ".join(names) or "—",
+        "docs_examined": exe.get("totalDocsExamined", "—"),
+        "keys_examined": exe.get("totalKeysExamined", "—"),
+        "n_returned": exe.get("nReturned", "—"),
+        "exec_ms": exe.get("executionTimeMillis", "—"),
+        "index_used": ", ".join(dict.fromkeys(indexes)) or ("COLLSCAN (sem índice)" if "COLLSCAN" in names else "—"),
+    }
+
+
 @app.post("/api/explain")
 def explain_query(body: ExplainBody):
-    """Runs a real explain('executionStats') via pymongo on the given filter."""
+    """Runs a real explain('executionStats') via pymongo and returns the exact command it ran."""
     uri = os.getenv("MONGODB_URI", "")
     if not uri:
         raise HTTPException(status_code=400, detail="MONGODB_URI não configurado no servidor.")
     _assert_uri_targets(body.project_id, body.cluster_name)
     _assert_namespace_is_safe(body.namespace)
     _assert_filter_is_safe(body.filter)
+    if body.sort:
+        _assert_index_keys_are_safe([{k: v} for k, v in body.sort.items()])
+        if any(v not in (1, -1) for v in body.sort.values()):
+            raise HTTPException(status_code=400, detail="sort aceita só 1 ou -1.")
+    parts = body.namespace.split(".", 1)
+    db_name, coll = parts[0], (parts[1] if len(parts) > 1 else parts[0])
+    find = {"find": coll, "filter": body.filter}
+    if body.sort:
+        find["sort"] = body.sort
+    if body.limit:
+        find["limit"] = body.limit
+    find["maxTimeMS"] = 10000
     try:
-        parts = body.namespace.split(".", 1)
-        db_name, coll = parts[0], (parts[1] if len(parts) > 1 else parts[0])
-        mc = _mongo(uri)
-        plan = mc[db_name].command("explain", {"find": coll, "filter": body.filter, "maxTimeMS": 10000},
-                                   verbosity="executionStats")
-        exe = plan.get("executionStats", {})
-        win = plan.get("queryPlanner", {}).get("winningPlan", {})
-        return {
-            "stage": win.get("stage") or win.get("inputStage", {}).get("stage", "—"),
-            "docs_examined": exe.get("totalDocsExamined", "—"),
-            "keys_examined": exe.get("totalKeysExamined", "—"),
-            "n_returned": exe.get("nReturned", "—"),
-            "exec_ms": exe.get("executionTimeMillis", "—"),
-            "index_used": win.get("inputStage", {}).get("indexName") or win.get("indexName") or "COLLSCAN (sem índice)",
-        }
+        plan = _mongo(uri)[db_name].command("explain", find, verbosity="executionStats")
     except Exception as e:
         # Driver errors can carry hostnames/URIs: log server-side, sanitize for the client.
         logger.warning("explain falhou namespace=%s err=%s", body.namespace, type(e).__name__)
         raise HTTPException(status_code=502, detail="Explain falhou no cluster (filtro inválido, prazo de 10 s ou permissão). Revise o filtro e tente novamente.")
+    # `command` is what the driver sent (db.runCommand form): the UI shows it as is.
+    return {**summarize_explain(plan), "database": db_name,
+            "command": {"explain": find, "verbosity": "executionStats"}}
 
 
 @app.post("/api/index")

@@ -25,7 +25,7 @@ export const getScaling     = (pid, name, tier) => http.get(`${c(pid, name)}/sca
 export const scaleCluster   = (pid, name, newTier) => http.post(`${c(pid, name)}/scale`, { new_tier: newTier }).then(r => r.data)
 export const createIndex    = (namespace, indexKeys, project_id, cluster_name) => http.post('/index', { namespace, index_keys: indexKeys, project_id, cluster_name }).then(r => r.data)
 export const getFinops      = () => http.get('/finops').then(r => r.data)
-export const explainQuery   = (namespace, filter, project_id, cluster_name) => http.post('/explain', { namespace, filter, project_id, cluster_name }).then(r => r.data)
+export const explainQuery   = (namespace, filter, project_id, cluster_name, { sort = null, limit = null } = {}) => http.post('/explain', { namespace, filter, project_id, cluster_name, ...(sort ? { sort } : {}), ...(limit ? { limit } : {}) }).then(r => r.data)
 
 // Conversation history (persisted in Atlas — requires MONGODB_URI on the backend)
 export const listConversations  = (q = '') => http.get('/chat/conversations', { params: { q } }).then(r => r.data.conversations)
