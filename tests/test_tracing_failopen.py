@@ -278,6 +278,18 @@ class TracingFailOpenTests(unittest.TestCase):
             self._connect_now()
         self.assertEqual(tracing._live_threads, [FakeLangfuse.instances[0].consumer])
 
+    def test_failure_seen_on_a_replaced_client_does_not_degrade_the_current_one(self):
+        with patch.object(tracing, "_probe", return_value=None):
+            self._connect_now()
+        current = tracing._client
+        stale = FakeLangfuse.__new__(FakeLangfuse)  # the client the error was seen on, already replaced
+        self.assertFalse(tracing._degrade("unreachable", "envio de eventos falhou", expected=stale))
+        self.assertIs(tracing._client, current)
+        self.assertEqual(tracing.status()["status"], "ok")
+        self.assertEqual(self._lines(), [])
+        self.assertTrue(tracing._degrade("unreachable", "envio de eventos falhou", expected=current))
+        self.assertEqual(tracing.status()["status"], "unreachable")
+
     def test_without_keys_is_off_and_silent(self):
         with patch.dict(os.environ, {"LANGFUSE_PUBLIC_KEY": "", "LANGFUSE_SECRET_KEY": ""}), \
                 patch.object(tracing, "_probe") as probe:

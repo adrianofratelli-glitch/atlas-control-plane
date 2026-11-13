@@ -136,10 +136,18 @@ def _shutdown_quietly(client) -> None:
     threading.Thread(target=run, name="langfuse-shutdown", daemon=True).start()
 
 
-def _degrade(status: str, reason: str) -> None:
-    """Langfuse unavailable: ONE warning per outage, then silence (counters keep counting)."""
+_ANY = object()
+
+
+def _degrade(status: str, reason: str, expected=_ANY) -> bool:
+    """Langfuse unavailable: ONE warning per outage, then silence (counters keep counting).
+
+    `expected`: the client the failure was seen on. If another client replaced it meanwhile,
+    nothing is degraded (checked under the lock). Returns whether it degraded."""
     global _client, _retry_at, _live_threads
     with _lock:
+        if expected is not _ANY and _client is not expected:
+            return False
         old = _client if _client else None
         _client = None if _client is not False else False
         _live_threads = []
@@ -155,6 +163,7 @@ def _degrade(status: str, reason: str) -> None:
                        reason, _host(), int(RETRY_SECONDS))
     else:
         logger.debug("Langfuse segue indisponível (%s)", reason)
+    return True
 
 
 class _SdkLogSink(logging.Handler):
@@ -169,8 +178,9 @@ class _SdkLogSink(logging.Handler):
         if record.levelno < logging.WARNING:
             return
         _bump("langfuse_sdk_errors")
-        if _client and _from_live_client(record.thread):  # e.g. self-host went down mid-demo
-            _degrade("unreachable", "envio de eventos falhou")
+        client = _client
+        if client and _from_live_client(record.thread):  # e.g. self-host went down mid-demo
+            _degrade("unreachable", "envio de eventos falhou", expected=client)
 
 
 def _from_live_client(thread_ident) -> bool:
