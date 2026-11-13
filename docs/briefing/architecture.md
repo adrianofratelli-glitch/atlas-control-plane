@@ -177,6 +177,7 @@ Detalhado nó a nó em `agent-behavior.md`.
 | `API_AUTH_TOKEN` | não | liga autenticação bearer em todo endpoint `/api` não-health |
 | `TORRE_ACTION_DB` | não | caminho alternativo do SQLite de aprovações |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | não | observability opcional, fail-open |
+| `LANGFUSE_RETRY_SECONDS` | não | intervalo da nova tentativa silenciosa com o Langfuse fora do ar (padrão 300) |
 
 ## Comandos
 

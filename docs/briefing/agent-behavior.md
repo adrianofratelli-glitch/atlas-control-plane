@@ -203,9 +203,14 @@ terminado em `_test`; aprovações num SQLite temporário.
 ## 8. Observability do agente (Langfuse)
 
 `backend/tracing.py` — fail-open: sem `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` no
-`.env`, todas as chamadas viram no-op e o turno segue normal. Um `auth_check()`
-roda uma vez por processo para nunca expor um link que dê 404 no meio de uma
-demo. Por turno: uma trace (`torre.turn`), uma *generation* por iteração de
+`.env`, todas as chamadas viram no-op e o turno segue normal. Antes do SDK, um
+`GET /api/public/health` com prazo de 2 s diz se o host responde; depois, um `auth_check()`
+confere a credencial, para nunca expor um link que dê 404 no meio de uma demo. Com o Langfuse
+fora do ar: **um** aviso por queda (com a causa: host sem resposta, HTTP ruim ou credencial
+recusada), as linhas do próprio SDK ("Unexpected error occurred…") viram o contador
+`langfuse_sdk_errors` em vez de sujar o log, cada turno sem trace soma em
+`langfuse_trace_skipped`, e `/api/metrics` traz `tracing.status`. Nova tentativa silenciosa a
+cada `LANGFUSE_RETRY_SECONDS` (padrão 300); quando volta, um `INFO` e as traces seguem. Por turno: uma trace (`torre.turn`), uma *generation* por iteração de
 raciocínio do LLM, um *span* por chamada de ferramenta MCP. O evento
 `trace_url` sai no stream logo após `connected`, e o `Chat.jsx` renderiza o
 badge "Ver trace no Langfuse" assim que chega.

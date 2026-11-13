@@ -55,7 +55,7 @@ Coberto por teste (`tests/`).
 ### 2.1 `create_index_direct` — `backend/atlas_client.py:600-665`
 
 Único ponto de escrita **direta via pymongo** fora do assistente operacional.
-Chamado por `POST /api/index` (`backend/api.py:720-728`), que já validou namespace e
+Chamado por `POST /api/index` (`backend/api.py:755-763`), que já validou namespace e
 chaves antes de chegar aqui.
 
 ```python
@@ -88,21 +88,28 @@ lista fechada; no máximo 10 chaves por corpo. **Por que**: namespace vindo de
 UI indo direto pro driver é injeção esperando acontecer — coberto por teste,
 sem exigir cluster.
 
-### 2.3 `/api/explain` — `backend/api.py:689-717`
+### 2.3 `/api/explain` — `backend/api.py:723-749`
 
-Antes do driver, `_assert_uri_targets` (`backend/api.py:620`) exige que o `MONGODB_URI`
+Antes do driver, `_assert_uri_targets` (`backend/api.py:624`) exige que o `MONGODB_URI`
 compartilhe um host com o cluster selecionado (`backend/cluster_identity.py`, ADR-001):
 cluster irmão do mesmo projeto → 409; Admin API fora ou cluster sem host publicado → 503.
 A mesma guarda vale para `/api/index` e para as ferramentas `mongo_*` do assistente.
 
 Roda `explain("executionStats")` real via `mc[db_name].command("explain",
-{"find": coll, "filter": body.filter}, verbosity="executionStats")`
-(`backend/api.py:702-703`). Filtro passa por `_assert_filter_is_safe`
-(`backend/api.py:676-686`), que rejeita recursivamente `$where`, `$function`,
+{"find": coll, "filter": filter, "sort": sort, "limit": limit, "maxTimeMS": 10000},
+verbosity="executionStats")` (`backend/api.py:735-745`). `sort` (só 1/-1, campos validados) e
+`limit` (1–100) são opcionais e vêm da consulta capturada no slow log: o filtro sozinho não
+mostra se um índice atende a ordenação. Filtro passa por `_assert_filter_is_safe`
+(`backend/api.py:680-690`), que rejeita recursivamente `$where`, `$function`,
 `$accumulator`, `$expr` — operadores que rodam JS/expressão arbitrária no
-servidor. Devolve stage vencedor, `totalDocsExamined`, `totalKeysExamined`,
-`nReturned`, tempo e índice usado (ou `"COLLSCAN (sem índice)"`). É o que
-justifica visualmente o índice sugerido ao lado, na tela de Otimização — tempo
+servidor. `summarize_explain` (`backend/api.py:706`) percorre o plano vencedor inteiro (inclui o
+`queryPlan` do SBE) e devolve a cadeia de stages (ex.: `SORT → FETCH → IXSCAN`),
+`totalDocsExamined`, `totalKeysExamined`, `nReturned`, tempo e os índices usados (ou
+`"COLLSCAN (sem índice)"`). Até 2026-11-13 o índice era procurado só um nível abaixo da raiz, e um
+`SORT` sobre `FETCH → IXSCAN` aparecia como COLLSCAN. A resposta traz também `command` (o comando
+exato enviado ao driver) e `database`, que a tela Consultas mostra em "Ver comando explain
+executado". A tela só oferece explain para linhas `find` do slow log: `getMore` e `aggregate` não
+carregam um find para reproduzir. É o que justifica o índice sugerido na tela de Índices — tempo
 sozinho diz que está lento, o `explain` diz por quê.
 
 ---

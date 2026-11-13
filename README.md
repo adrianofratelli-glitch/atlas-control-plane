@@ -32,7 +32,7 @@ Everything comes from the Atlas Admin API v2. The UI is in Brazilian Portuguese 
 
 Note what it does in that screenshot: asked about 24h, it says it only has the last 5 minutes and shows how to get the rest, instead of inventing a number.
 
-Also in the menu: **Performance Advisor** (suggested indexes, one-click creation via pymongo, Claude analysis, PDF export), **Query Profiler** (the most recent slow-log lines, 1000 by default and `?limit=` up to 5000, grouped by shape and checked with a real `explain('executionStats')`).
+Also in the menu: **Performance Advisor** (suggested indexes, one-click creation via pymongo, Claude analysis, PDF export), **Query Profiler** (the most recent slow-log lines, 1000 by default and `?limit=` up to 5000, grouped by shape and checked with a real `explain('executionStats')` that replays the captured `find` filter, sort and limit and shows the exact command it sent). Every screen opens with **Demonstra no Atlas**: the Atlas capability it shows and the Admin API v2 paths / driver commands the server calls for it (`frontend/src/atlas-capabilities.js`, checked against the client by a test).
 
 > The screenshots run against a real Atlas organization; project and cluster names were replaced with neutral ones.
 
@@ -132,7 +132,7 @@ venv/bin/python -m unittest discover -s tests -v
 cd frontend && node --test tests/*.test.mjs
 ```
 
-Offline, no credentials needed: scaling heuristic, cluster identity (`tests/test_cluster_identity.py`: `MONGODB_URI` must match the selected cluster by host, never by the project-wide SRV hash), Health Score read from Atlas, injection guards, chat-memory ids, the assistant graph, and `tests/test_hardening_adversarial.py` (gateway fail-closed and 429/5xx retry, PII never reaching Langfuse, prompt injection and tool abuse, hostile ids and payloads, Atlas 429/5xx/timeouts, concurrent approvals, reset guard) and `tests/test_bootstrap_docs_and_slow_log.py` (docs never ask for a direct provider key, the Docker build always gets the `shared` context, slow-log cap, `/scaling` without `tier`). Tests force the in-memory checkpointer, so they never write to a real database.
+Offline, no credentials needed: scaling heuristic, cluster identity (`tests/test_cluster_identity.py`: `MONGODB_URI` must match the selected cluster by host, never by the project-wide SRV hash), Health Score read from Atlas, injection guards, chat-memory ids, the assistant graph, and `tests/test_hardening_adversarial.py` (gateway fail-closed and 429/5xx retry, PII never reaching Langfuse, prompt injection and tool abuse, hostile ids and payloads, Atlas 429/5xx/timeouts, concurrent approvals, reset guard) and `tests/test_bootstrap_docs_and_slow_log.py` (docs never ask for a direct provider key, the Docker build always gets the `shared` context, slow-log cap, `/scaling` without `tier`). Also `tests/test_explain_fidelity.py` (explain echoes the command it ran and finds the index anywhere in the plan), `tests/test_atlas_capabilities.py` (the Demonstra no Atlas panel only lists paths the client calls) and `tests/test_tracing_failopen.py` (Langfuse down: one warning per outage, counters, silent retry). Tests force the in-memory checkpointer, so they never write to a real database.
 
 ## Quality evaluation (avaliação de qualidade)
 

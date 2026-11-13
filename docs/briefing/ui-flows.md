@@ -84,7 +84,21 @@ continua acessível — é a fonte usada pelo roteiro de demo do assistente.
 Slow queries reais (`/cluster/.../slow`, últimas 1000 linhas do slow log por padrão,
 `?limit=` até 5000; a tela diz quantas entradas agrupou) com `explain` ao lado
 (`POST /explain`) mostrando `totalKeysExamined` e o plano — tempo sozinho diz
-que está lento, o `explain` diz por quê.
+que está lento, o `explain` diz por quê. A coluna Tipo mostra o nome do comando (`find`,
+`getMore`, `aggregate`), não o `type: command` genérico do log. O explain só é oferecido para
+`find`, com o filtro, o `sort` e o `limit` capturados; depois de rodar, "Ver comando explain
+executado" mostra o comando exato que o servidor enviou ao driver (`command` da resposta). Para
+`getMore` a tela explica por que não há explain (a linha continua o cursor de outra consulta).
+
+### "Demonstra no Atlas" (todas as telas)
+
+Logo abaixo do título, cada tela tem um resumo recolhível com a capacidade do Atlas que ela
+demonstra (Admin API, Performance Advisor, slow query log, explain, Billing, métricas, MCP) e a
+lista das chamadas que o servidor faz para ela (caminhos da Admin API v2 e comandos do driver).
+Fonte: `frontend/src/atlas-capabilities.js`; `tests/test_atlas_capabilities.py` falha se um
+caminho listado não for chamado em `backend/atlas_client.py` ou se uma tela do menu ficar sem
+entrada. No Assistente, cada item de "O que a Torre consultou" mostra também o nome da ferramenta
+MCP chamada.
 
 ### Health — `docs/screenshots/02-health-score.png`
 
