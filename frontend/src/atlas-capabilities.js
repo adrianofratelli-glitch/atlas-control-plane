@@ -19,6 +19,7 @@ export const ATLAS_CAPABILITIES = {
     why: 'O Atlas sugere índices a partir das consultas lentas do primário; o botão executa createIndexes no cluster do MONGODB_URI.',
     calls: [
       'GET /groups/{groupId}/processes',
+      'GET /groups/{groupId}/clusters/{clusterName}  (antes de criar: confere que o MONGODB_URI é deste cluster)',
       'GET /groups/{groupId}/processes/{processId}/performanceAdvisor/suggestedIndexes',
     ],
     driver: ['createIndexes (db.<coleção>.createIndex) — só no cluster do MONGODB_URI'],
@@ -29,6 +30,7 @@ export const ATLAS_CAPABILITIES = {
     calls: [
       'GET /groups/{groupId}/processes',
       'GET /groups/{groupId}/processes/{processId}/performanceAdvisor/slowQueryLogs?nLogs=1000',
+      'GET /groups/{groupId}/clusters/{clusterName}  (antes do explain: confere que o MONGODB_URI é deste cluster)',
     ],
     driver: ['explain { find, filter, sort, limit } verbosity executionStats — só no cluster do MONGODB_URI'],
   },
@@ -50,6 +52,7 @@ export const ATLAS_CAPABILITIES = {
       'GET /groups/{groupId}/processes',
       'GET /groups/{groupId}/processes/{processId}/measurements',
       'GET /groups/{groupId}/processes/{processId}/disks',
+      'GET /groups/{groupId}/processes/{processId}/disks/{partitionName}/measurements',
       'PATCH /groups/{groupId}/clusters/{clusterName}  (só após confirmar)',
     ],
   },

@@ -40,6 +40,8 @@ from backend.llm_gateway import gateway_configured
 
 load_dotenv()
 observability.setup_logging()
+from backend import tracing  # noqa: E402 — after load_dotenv: reads LANGFUSE_* at call time
+tracing.warm_up()  # Langfuse probe + auth_check in a background thread, never inside a turn
 logger = logging.getLogger("torre")
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -209,7 +211,6 @@ async def _request_observability(request: Request, call_next):
 @app.get("/api/metrics")
 def api_metrics():
     """In-process counters: requests/errors/latency per route + business counters + tracing state."""
-    from backend import tracing
     return {**observability.metrics.snapshot(), "tracing": tracing.status()}
 
 

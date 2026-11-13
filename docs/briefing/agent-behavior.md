@@ -203,9 +203,13 @@ terminado em `_test`; aprovações num SQLite temporário.
 ## 8. Observability do agente (Langfuse)
 
 `backend/tracing.py` — fail-open: sem `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` no
-`.env`, todas as chamadas viram no-op e o turno segue normal. Antes do SDK, um
-`GET /api/public/health` com prazo de 2 s diz se o host responde; depois, um `auth_check()`
-confere a credencial, para nunca expor um link que dê 404 no meio de uma demo. Com o Langfuse
+`.env`, todas as chamadas viram no-op e o turno segue normal. A conexão roda numa thread de
+fundo (`tracing.warm_up`, disparada na subida do `backend/api.py` e de novo quando a janela de
+nova tentativa vence), nunca dentro do turno: um `GET /api/public/health` com prazo de 2 s diz se
+o host responde e um `auth_check()` confere a credencial, para nunca expor um link que dê 404 no
+meio de uma demo. O turno só lê o estado; enquanto não há client, segue sem trace. Client
+recusado ou que deixa de responder é encerrado (`shutdown`) numa thread de fundo, sem vazar
+threads nem conexões. O `reason` de `/api/metrics` não traz o host (só o log do servidor traz). Com o Langfuse
 fora do ar: **um** aviso por queda (com a causa: host sem resposta, HTTP ruim ou credencial
 recusada), as linhas do próprio SDK ("Unexpected error occurred…") viram o contador
 `langfuse_sdk_errors` em vez de sujar o log, cada turno sem trace soma em

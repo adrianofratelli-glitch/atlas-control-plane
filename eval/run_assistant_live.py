@@ -184,6 +184,10 @@ def main(argv=None) -> int:
     if not os.environ["MONGODB_DB"].endswith("_test"):
         print("MONGODB_DB precisa terminar em _test (checkpoints do eval).", file=sys.stderr)
         return 2
+    from backend import tracing
+    pending = tracing.warm_up()  # Langfuse connects off the turn; give it a moment so turns get traced
+    if pending:
+        pending.join(timeout=5)
     os.environ["TORRE_ACTION_DB"] = str(Path(tempfile.mkdtemp(prefix="torre-eval-")) / "actions.sqlite3")
     if not (os.getenv("GROVE_BASE_URL") and os.getenv("GROVE_API_KEY")):
         print("Grove não configurado: eval de respostas exige o gateway.", file=sys.stderr)

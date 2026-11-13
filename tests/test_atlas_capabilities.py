@@ -21,12 +21,25 @@ def norm(path: str) -> str:
 
 
 class AtlasCapabilitiesTests(unittest.TestCase):
-    def test_every_listed_admin_api_path_is_called_by_atlas_client(self):
-        client_paths = {norm(m) for m in re.findall(r'f?"(/[^"\s]*)"', CLIENT)}
-        listed = re.findall(r"'(?:GET|PATCH|POST|DELETE) (/[^ ']+)", CAPS)
+    def test_every_listed_call_matches_method_and_path_in_atlas_client(self):
+        method_of = {"get": "GET", "get_all_pages": "GET", "patch": "PATCH"}
+        client_calls = {(method_of[m], norm(path)) for m, path in
+                        re.findall(r'self\._(get_all_pages|get|patch)\(\s*f?"(/[^"\s]*)"', CLIENT)}
+        self.assertIn(("PATCH", "/groups/{}/clusters/{}"), client_calls)
+        listed = re.findall(r"'(GET|PATCH|POST|DELETE) (/[^ ']+)", CAPS)
         self.assertGreater(len(listed), 10)
-        missing = sorted({p for p in listed if norm(p) not in client_paths})
-        self.assertEqual(missing, [], f"paths not called by backend/atlas_client.py: {missing}")
+        missing = sorted({(m, p) for m, p in listed if (m, norm(p)) not in client_calls})
+        self.assertEqual(missing, [], f"method + path not called by backend/atlas_client.py: {missing}")
+
+    def test_screens_list_the_calls_their_guards_and_metrics_make(self):
+        def calls(screen):
+            block = re.search(rf"\n  {screen}: \{{(.*?)\n  \}},", CAPS, re.S).group(1)
+            return block
+        # explain / createIndex check the cluster identity (get_cluster) before touching the driver
+        for screen in ("indexes", "profiler"):
+            self.assertIn("'GET /groups/{groupId}/clusters/{clusterName} ", calls(screen), screen)
+        # live metrics read the disk partition measurements
+        self.assertIn("/disks/{partitionName}/measurements", calls("scale"))
 
     def test_every_screen_has_an_entry(self):
         screens = re.findall(r"\{ id: '(\w+)'", APP)

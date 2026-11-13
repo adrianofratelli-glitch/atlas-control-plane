@@ -87,7 +87,9 @@ Slow queries reais (`/cluster/.../slow`, últimas 1000 linhas do slow log por pa
 que está lento, o `explain` diz por quê. A coluna Tipo mostra o nome do comando (`find`,
 `getMore`, `aggregate`), não o `type: command` genérico do log. O explain só é oferecido para
 `find`, com o filtro, o `sort` e o `limit` capturados; depois de rodar, "Ver comando explain
-executado" mostra o comando exato que o servidor enviou ao driver (`command` da resposta). Para
+executado" mostra o comando exato que o servidor enviou ao driver (`command` da resposta). Se a
+consulta capturada tem `limit` acima de 100, a tela avisa que o explain roda com 100 (máximo do
+servidor) e que o plano pode diferir. Para
 `getMore` a tela explica por que não há explain (a linha continua o cursor de outra consulta).
 
 ### "Demonstra no Atlas" (todas as telas)

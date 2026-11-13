@@ -55,6 +55,8 @@ export default function Profiler({ clusters, config }) {
           filter: cmd.filter || cmd.q || cmd.pipeline || {},
           sort: cmd.sort && typeof cmd.sort === 'object' && !Array.isArray(cmd.sort) ? cmd.sort : null,
           limit: Number.isInteger(cmd.limit) && cmd.limit > 0 ? Math.min(cmd.limit, 100) : null,
+          // the server accepts limit 1–100: a bigger captured limit is replayed as 100 and the screen says so
+          limitCut: Number.isInteger(cmd.limit) && cmd.limit > 100 ? cmd.limit : null,
           // explain reproduces only a find; getMore/aggregate lines do not carry a find to replay
           explainable: Object.keys(cmd)[0] === 'find',
           queryHash: attr.queryHash || '—',
@@ -201,6 +203,11 @@ export default function Profiler({ clusters, config }) {
                             <Button size="xsmall" disabled={expl?.busy} onClick={() => runExplain(key, r)}>
                               {expl?.busy ? '⏳ Executando…' : "▶ Rodar explain('executionStats') real"}
                             </Button>
+                            {r.limitCut && (
+                              <div style={{ fontSize: 11, color: '#ffc010', marginTop: 6 }}>
+                                ⚠️ A consulta capturada usa limit {r.limitCut.toLocaleString('pt-BR')}; o explain roda com limit 100 (máximo aceito pelo servidor), então o plano pode diferir.
+                              </div>
+                            )}
                             {expl?.key === key && expl.err && (
                               <Banner variant="danger" style={{ marginTop: 8 }}>{expl.err}</Banner>
                             )}

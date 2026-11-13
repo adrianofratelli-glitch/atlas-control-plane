@@ -99,6 +99,7 @@ PROBE_TIMEOUT_S = 2.0
 _lock = threading.Lock()
 _state = {"status": "pending", "reason": None, "warned": False}
 _retry_at = 0.0
+_connect_thread: threading.Thread | None = None  # the probe + auth_check never run inside a turn
 
 
 def _host() -> str:
@@ -113,18 +114,40 @@ def _bump(name: str) -> None:
         pass
 
 
+def _shutdown_quietly(client) -> None:
+    """Stops a Langfuse client's consumer threads and HTTP pool off the caller's thread.
+
+    Runs in a daemon thread: shutdown() flushes, and with the host down the flush can
+    retry for a while; nobody waits for it (the caller may itself be an SDK thread).
+    """
+    if not client:
+        return
+
+    def run():
+        try:
+            client.shutdown()
+        except Exception:  # noqa: BLE001
+            logger.debug("shutdown do client Langfuse falhou", exc_info=True)
+
+    threading.Thread(target=run, name="langfuse-shutdown", daemon=True).start()
+
+
 def _degrade(status: str, reason: str) -> None:
     """Langfuse unavailable: ONE warning per outage, then silence (counters keep counting)."""
     global _client, _retry_at
     with _lock:
+        old = _client if _client else None
         _client = None if _client is not False else False
         _retry_at = time.monotonic() + RETRY_SECONDS
         first = not _state["warned"]
         _state.update(status=status, reason=reason, warned=True)
+    _shutdown_quietly(old)
     _bump("langfuse_unavailable")
     if first:
-        logger.warning("Langfuse indisponível (%s): turnos seguem sem trace; nova tentativa silenciosa a cada %ds. "
-                       "Contadores em /api/metrics (langfuse_*).", reason, int(RETRY_SECONDS))
+        # The host goes to the server log only; /api/metrics gets the hostless reason.
+        logger.warning("Langfuse indisponível (%s; LANGFUSE_HOST=%s): turnos seguem sem trace; nova tentativa "
+                       "silenciosa a cada %ds. Contadores em /api/metrics (langfuse_*).",
+                       reason, _host(), int(RETRY_SECONDS))
     else:
         logger.debug("Langfuse segue indisponível (%s)", reason)
 
@@ -153,14 +176,14 @@ def _install_sdk_log_sink() -> None:
 
 
 def _probe(host: str) -> tuple[str, str] | None:
-    """Cheap health check before touching the SDK. Returns (status, reason) on failure."""
+    """Cheap health check before touching the SDK. Returns (status, hostless reason) on failure."""
     try:
         import httpx
         r = httpx.get(f"{host}/api/public/health", timeout=PROBE_TIMEOUT_S)
     except Exception as e:  # noqa: BLE001
-        return "unreachable", f"{host} não responde ({type(e).__name__})"
+        return "unreachable", f"host não responde ({type(e).__name__})"
     if r.status_code != 200:
-        return "unhealthy", f"{host}/api/public/health devolveu HTTP {r.status_code}"
+        return "unhealthy", f"health devolveu HTTP {r.status_code}"
     return None
 
 
@@ -171,21 +194,15 @@ def status() -> dict:
     return {"status": _state["status"], "reason": _state["reason"]}
 
 
-def _get_client():
+def _connect() -> None:
+    """Probe + auth_check, in a background thread (blocking network: up to ~2 s + SDK timeout)."""
     global _client
-    if not _configured() or _client is False:
-        return None
-    if _client:
-        return _client
-    if time.monotonic() < _retry_at:
-        _bump("langfuse_trace_skipped")
-        return None
     _install_sdk_log_sink()
     failure = _probe(_host())
     if failure:
         _degrade(*failure)
-        _bump("langfuse_trace_skipped")
-        return None
+        return
+    candidate = None
     try:
         from langfuse import Langfuse
         candidate = Langfuse()
@@ -194,16 +211,45 @@ def _get_client():
         if not candidate.auth_check():
             raise RuntimeError("auth_check")
     except Exception:  # noqa: BLE001 — tracing never breaks the turn
+        _shutdown_quietly(candidate)  # its consumer threads and HTTP pool would leak otherwise
         _degrade("auth", "credencial recusada ou SDK incompatível (auth_check falhou)")
-        _bump("langfuse_trace_skipped")
+        return
+    with _lock:
+        if _client is False:  # disabled meanwhile (tests)
+            recovered = None
+        else:
+            recovered = _state["warned"]
+            _client = candidate
+            _state.update(status="ok", reason=None, warned=False)
+    if recovered is None:
+        _shutdown_quietly(candidate)
+    elif recovered:
+        logger.info("Langfuse disponível de novo; traces retomadas")
+
+
+def warm_up() -> threading.Thread | None:
+    """Starts the background connection if due. Never blocks; returns the thread (tests join it)."""
+    global _connect_thread
+    if not _configured() or _client is False or _client:
         return None
     with _lock:
-        recovered = _state["warned"]
-        _client = candidate
-        _state.update(status="ok", reason=None, warned=False)
-    if recovered:
-        logger.info("Langfuse disponível de novo; traces retomadas")
-    return _client
+        if (_connect_thread and _connect_thread.is_alive()) or time.monotonic() < _retry_at:
+            return None
+        _connect_thread = threading.Thread(target=_connect, name="langfuse-connect", daemon=True)
+        _connect_thread.start()
+        return _connect_thread
+
+
+def _get_client():
+    """Turn path: only READS the state (no network). While not connected, the turn runs
+    untraced and a background connection is started if one is due."""
+    if not _configured() or _client is False:
+        return None
+    if _client:
+        return _client
+    warm_up()
+    _bump("langfuse_trace_skipped")
+    return None
 
 
 def start_trace(*, name: str, user_id: str, session_id: str, input_text: str,
