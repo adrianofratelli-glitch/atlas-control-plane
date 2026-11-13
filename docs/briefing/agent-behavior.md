@@ -209,8 +209,9 @@ quando o módulo é importado, e de novo quando a janela de nova tentativa vence
 o host responde e um `auth_check()` confere a credencial, para nunca expor um link que dê 404 no
 meio de uma demo. O turno só lê o estado; enquanto não há client, segue sem trace. Client
 recusado, que deixa de responder ou substituído é encerrado (`shutdown`) numa thread de fundo,
-sem vazar threads nem conexões; log atrasado de um client já descartado conta no contador mas não
-derruba o client novo. Os testes rodam com as chaves do Langfuse vazias (`tests/conftest.py` e
+sem vazar threads nem conexões; só log vindo de uma thread viva do SDK do client atual (objetos
+`Thread` guardados na conexão, filtrados pela origem `langfuse`) derruba o client; o resto (flush
+atrasado de client descartado, thread de requisição) só soma no contador. Os testes rodam com as chaves do Langfuse vazias (`tests/conftest.py` e
 `tests/test_000_isolation.py`, que também prova que importar `backend.api` não abre conexão). O `reason` de `/api/metrics` não traz o host (só o log do servidor traz). Com o Langfuse
 fora do ar: **um** aviso por queda (com a causa: host sem resposta, HTTP ruim ou credencial
 recusada), as linhas do próprio SDK ("Unexpected error occurred…") viram o contador

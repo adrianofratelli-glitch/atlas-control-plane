@@ -100,10 +100,10 @@ _lock = threading.Lock()
 _state = {"status": "pending", "reason": None, "warned": False}
 _retry_at = 0.0
 _connect_thread: threading.Thread | None = None  # the probe + auth_check never run inside a turn
-# SDK threads of clients already dropped (consumers + their shutdown thread): their late log lines
-# (an old flush failing) are counted but must not degrade the client that replaced them.
-_retired_threads: set[int] = set()
-_client_threads: dict[int, set[int]] = {}  # id(client) -> idents of the threads it started
+# Thread OBJECTS the CURRENT client's SDK started (its consumers). Only a log line coming from one of
+# them, while alive, says the live client is failing; anything else (a dropped client's late flush,
+# a request thread) only counts. Objects + is_alive(), not bare idents: the OS reuses idents.
+_live_threads: list[threading.Thread] = []
 
 
 def _host() -> str:
@@ -126,8 +126,6 @@ def _shutdown_quietly(client) -> None:
     """
     if not client:
         return
-    with _lock:
-        _retired_threads.update(_client_threads.pop(id(client), set()))
 
     def run():
         try:
@@ -135,18 +133,16 @@ def _shutdown_quietly(client) -> None:
         except Exception:  # noqa: BLE001
             logger.debug("shutdown do client Langfuse falhou", exc_info=True)
 
-    thread = threading.Thread(target=run, name="langfuse-shutdown", daemon=True)
-    thread.start()
-    with _lock:
-        _retired_threads.add(thread.ident)
+    threading.Thread(target=run, name="langfuse-shutdown", daemon=True).start()
 
 
 def _degrade(status: str, reason: str) -> None:
     """Langfuse unavailable: ONE warning per outage, then silence (counters keep counting)."""
-    global _client, _retry_at
+    global _client, _retry_at, _live_threads
     with _lock:
         old = _client if _client else None
         _client = None if _client is not False else False
+        _live_threads = []
         _retry_at = time.monotonic() + RETRY_SECONDS
         first = not _state["warned"]
         _state.update(status=status, reason=reason, warned=True)
@@ -173,10 +169,19 @@ class _SdkLogSink(logging.Handler):
         if record.levelno < logging.WARNING:
             return
         _bump("langfuse_sdk_errors")
-        if record.thread in _retired_threads:
-            return  # a dropped client's late flush: not about the current client
-        if _client:  # the live client started failing (e.g. self-host went down mid-demo)
+        if _client and _from_live_client(record.thread):  # e.g. self-host went down mid-demo
             _degrade("unreachable", "envio de eventos falhou")
+
+
+def _from_live_client(thread_ident) -> bool:
+    return any(t.ident == thread_ident and t.is_alive() for t in list(_live_threads))
+
+
+def _sdk_threads(before: set) -> list:
+    """Threads started by the Langfuse SDK since `before` (filtered by origin: request or other
+    threads that happen to start meanwhile are not the client's)."""
+    return [t for t in threading.enumerate()
+            if t not in before and type(t).__module__.startswith("langfuse")]
 
 
 def _install_sdk_log_sink() -> None:
@@ -207,7 +212,7 @@ def status() -> dict:
 
 def _connect() -> None:
     """Probe + auth_check, in a background thread (blocking network: up to ~2 s + SDK timeout)."""
-    global _client
+    global _client, _live_threads
     _install_sdk_log_sink()
     failure = _probe(_host())
     if failure:
@@ -216,10 +221,9 @@ def _connect() -> None:
     candidate = None
     try:
         from langfuse import Langfuse
-        before = {t.ident for t in threading.enumerate()}
+        before = set(threading.enumerate())
         candidate = Langfuse()
-        with _lock:  # the SDK starts its consumer threads in the constructor
-            _client_threads[id(candidate)] = {t.ident for t in threading.enumerate()} - before
+        threads = _sdk_threads(before)  # the SDK starts its consumer threads in the constructor
         # auth_check runs once per (re)connection. Without it the SDK is fire-and-forget:
         # the UI would show a "Ver no Langfuse" link that 404s in the middle of a live demo.
         if not candidate.auth_check():
@@ -236,6 +240,7 @@ def _connect() -> None:
             recovered = _state["warned"]
             previous = _client if _client and _client is not candidate else None
             _client = candidate
+            _live_threads = threads
             _state.update(status="ok", reason=None, warned=False)
     _shutdown_quietly(previous)  # never two live clients
     if recovered is None:
