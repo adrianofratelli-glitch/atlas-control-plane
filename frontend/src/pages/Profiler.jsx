@@ -4,7 +4,7 @@ import { H1 } from '@leafygreen-ui/typography'
 import Button from '@leafygreen-ui/button'
 import Banner from '@leafygreen-ui/banner'
 import Badge from '@leafygreen-ui/badge'
-import { KpiGrid, Kpi, Section, Empty } from '../components.jsx'
+import { KpiGrid, Kpi, Section, Empty, AtlasCapability } from '../components.jsx'
 import { getSlow, explainQuery } from '../api.js'
 import { ClusterPicker } from './_picker.jsx'
 import QueryDetails from '../components/QueryDetails.jsx'
@@ -15,7 +15,9 @@ const WRITE_OPS = ['insert', 'update', 'remove', 'delete', 'findAndModify']
 function classify(attr) {
   const t = (attr.type || '').toLowerCase()
   const cmd = attr.command || {}
-  const op = t || Object.keys(cmd)[0] || 'query'
+  // The slow log says type "command" for almost everything; the command name (find, getMore,
+  // aggregate…) is what tells the shape apart.
+  const op = (t && t !== 'command' ? t : Object.keys(cmd)[0]) || t || 'query'
   const isWrite = WRITE_OPS.some(w => op.includes(w))
   return { op, kind: isWrite ? 'write' : 'read' }
 }
@@ -51,6 +53,10 @@ export default function Profiler({ clusters, config }) {
           ns, plan, planRaw, op, kind, count: 0, totalDur: 0, maxDur: 0,
           docs: 0, keys: 0, ret: 0, yields: 0,
           filter: cmd.filter || cmd.q || cmd.pipeline || {},
+          sort: cmd.sort && typeof cmd.sort === 'object' && !Array.isArray(cmd.sort) ? cmd.sort : null,
+          limit: Number.isInteger(cmd.limit) && cmd.limit > 0 ? Math.min(cmd.limit, 100) : null,
+          // explain reproduces only a find; getMore/aggregate lines do not carry a find to replay
+          explainable: Object.keys(cmd)[0] === 'find',
           queryHash: attr.queryHash || '—',
         }
         const r = map[key]
@@ -70,7 +76,7 @@ export default function Profiler({ clusters, config }) {
   const runExplain = async (key, r) => {
     setExpl({ key, busy: true })
     try {
-      setExpl({ key, busy: false, data: await explainQuery(r.ns, r.filter, sel.project_id, sel.cluster_name) })
+      setExpl({ key, busy: false, data: await explainQuery(r.ns, r.filter, sel.project_id, sel.cluster_name, { sort: r.sort, limit: r.limit }) })
     } catch (e) {
       setExpl({ key, busy: false, err: e?.response?.data?.detail || e.message })
     }
@@ -92,6 +98,7 @@ export default function Profiler({ clusters, config }) {
   return (
     <>
       <div className="page-head"><H1 style={{ color: 'var(--text-pri)' }}>Query Profiler</H1></div>
+      <AtlasCapability screen="profiler" />
       <div className="row" style={{ marginBottom: 18 }}>
         <ClusterPicker clusters={clusters} value={sel} onChange={setSel} />
         <Button variant="primary" onClick={load} disabled={busy}>{busy ? 'Buscando…' : '🔍 Carregar Slow Queries'}</Button>
@@ -175,14 +182,21 @@ export default function Profiler({ clusters, config }) {
                         <QueryDetails
                           operation={r.op}
                           namespace={r.ns}
-                          query={r.filter}
-                          explain={expl?.key === key ? expl.data : {
+                          query={expl?.key === key && expl.data?.command ? expl.data.command : r.filter}
+                          note={expl?.key === key && expl.data?.command ? `comando enviado pelo driver ao banco ${expl.data.database}` : 'consulta capturada no slow log (valores sensíveis mascarados)'}
+                          explain={expl?.key === key ? expl.data && { ...expl.data, command: undefined } : {
                             stage: r.planRaw, docs_examined: r.docs, keys_examined: r.keys,
                             n_returned: r.ret, query_hash: r.queryHash,
                           }}
-                          label="Ver query e plano capturado"
+                          label={expl?.key === key && expl.data ? 'Ver comando explain executado e resultado' : 'Ver query e plano capturado'}
                         />
-                        {config.mongodb && sel.is_uri_target && r.kind === 'read' && !Array.isArray(r.filter) && (
+                        {config.mongodb && sel.is_uri_target && r.kind === 'read' && !r.explainable && (
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10 }}>
+                            explain indisponível para <span className="mono">{r.op}</span>: só um <span className="mono">find</span> capturado é reproduzido
+                            {r.op === 'getMore' ? ' (getMore continua o cursor de outra consulta; o comando original não está nesta linha do log).' : '.'}
+                          </div>
+                        )}
+                        {config.mongodb && sel.is_uri_target && r.kind === 'read' && r.explainable && (
                           <div style={{ marginTop: 12 }}>
                             <Button size="xsmall" disabled={expl?.busy} onClick={() => runExplain(key, r)}>
                               {expl?.busy ? '⏳ Executando…' : "▶ Rodar explain('executionStats') real"}

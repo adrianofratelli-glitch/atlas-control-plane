@@ -1,5 +1,6 @@
 // components.jsx — reusable MongoDB Atlas-style building blocks
 import { Body } from '@leafygreen-ui/typography'
+import { ATLAS_CAPABILITIES } from './atlas-capabilities.js'
 
 export function Leaf({ size = 28, color = '#00ED64' }) {
   return (
@@ -80,5 +81,26 @@ export function MiniChart({ series, height = 160 }) {
         <path d={lineQ} fill="none" stroke="#00c2eb" strokeWidth="3" vectorEffect="non-scaling-stroke" />
       </svg>
     </div>
+  )
+}
+
+// "Esta tela demonstra": the Atlas capability behind the screen and the calls the server makes
+// (source: atlas-capabilities.js, checked against backend/atlas_client.py by a test).
+export function AtlasCapability({ screen }) {
+  const cap = ATLAS_CAPABILITIES[screen]
+  if (!cap) return null
+  return (
+    <details className="atlas-capability" data-screen={screen}>
+      <summary><span className="atlas-capability-label">Demonstra no Atlas</span> {cap.capability}</summary>
+      <div className="atlas-capability-body">
+        <p>{cap.why}</p>
+        <div className="mono atlas-capability-title">Chamadas feitas pelo servidor (Admin API v2, base /api/atlas/v2)</div>
+        <ul className="mono">{cap.calls.map(c => <li key={c}>{c}</li>)}</ul>
+        {cap.driver && <>
+          <div className="mono atlas-capability-title">Comandos pelo driver (MONGODB_URI)</div>
+          <ul className="mono">{cap.driver.map(c => <li key={c}>{c}</li>)}</ul>
+        </>}
+      </div>
+    </details>
   )
 }

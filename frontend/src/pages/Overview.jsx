@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { H1 } from '@leafygreen-ui/typography'
 import Badge from '@leafygreen-ui/badge'
 import Card from '@leafygreen-ui/card'
-import { Leaf, KpiGrid, Kpi, Section, StatusDot } from '../components.jsx'
+import { Leaf, KpiGrid, Kpi, Section, StatusDot, AtlasCapability } from '../components.jsx'
 import { getAlerts } from '../api.js'
 
 const fmt = (n) => Math.round(n).toLocaleString('pt-BR')
@@ -37,6 +37,7 @@ export default function Overview({ clusters }) {
   return (
     <>
       <div className="page-head"><Leaf size={26} /><H1 style={{ color: 'var(--text-pri)' }}>Visão Geral</H1></div>
+      <AtlasCapability screen="overview" />
 
       <KpiGrid>
         <Kpi label="Total Clusters" value={clusters.length} delta={`${dedic.length} dedicados`} />

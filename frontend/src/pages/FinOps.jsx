@@ -5,7 +5,7 @@ import Badge from '@leafygreen-ui/badge'
 import Button from '@leafygreen-ui/button'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { KpiGrid, Kpi, Section } from '../components.jsx'
+import { KpiGrid, Kpi, Section, AtlasCapability } from '../components.jsx'
 import { getFinops, getInvoice, streamAssistant, downloadReport } from '../api.js'
 
 const fmt = (n) => Math.round(n).toLocaleString('pt-BR')
@@ -79,6 +79,7 @@ export default function FinOps({ clusters }) {
 
   return <>
     <div className="page-head"><H1 style={{ color: 'var(--text-pri)' }}>FinOps</H1><Button onClick={load} disabled={busy || busyAI}>Atualizar métricas</Button></div>
+    <AtlasCapability screen="finops" />
     <KpiGrid>
       <Kpi label="Fatura Corrente" value={invoice == null ? '—' : `$${fmt(invoice)}`} delta={invoice == null ? 'indisponível · Atlas Billing API' : 'real · Atlas Billing API'} />
       <Kpi label="Total USD/Mês (est.)" value={`$${fmt(totalUsd)}`} delta="referência us-east-1 · inclui pausados" />

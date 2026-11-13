@@ -3,7 +3,7 @@ import Button from '@leafygreen-ui/button'
 import Banner from '@leafygreen-ui/banner'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Leaf } from '../components.jsx'
+import { Leaf, AtlasCapability } from '../components.jsx'
 import { streamAssistant, getAssistantCapabilities, getAssistantActions, decideAssistantAction, listConversations, getConversation, deleteConversation } from '../api.js'
 import { clusterKey } from './_picker.jsx'
 import { useClusterSelection } from '../cluster-context.jsx'
@@ -187,6 +187,7 @@ export default function Chat({ clusters, config, active = true }) {
         </select>
       </label>
     </header>
+    <AtlasCapability screen="chat" />
     <div className="assistant-status"><span className={connected ? 'live' : ''}>{connected ? 'MCP conectado nesta conversa' : 'MCP pronto para conectar'}</span><span>{caps ? caps.tools.length + ' ferramentas' : 'Carregando ferramentas…'}</span><span>Alterações com aprovação</span>
       {traceUrl && <a href={traceUrl} target="_blank" rel="noreferrer" className="langfuse-link" title="Abrir trace completo (tokens, custo, latência por passo) no Langfuse">🔭 Ver trace no Langfuse ↗</a>}
     </div>
@@ -199,7 +200,7 @@ export default function Chat({ clusters, config, active = true }) {
     </div>
     {msgs.length === 0 && <section className="assistant-starters" aria-label="Sugestões para começar">{STARTERS.map(([title, prompt]) => <button key={title} disabled={busy || decisionBusy} onClick={() => send(prompt)}><strong>{title}</strong><span>{prompt}</span><span aria-hidden="true">↗</span></button>)}</section>}
     <section aria-label="Conversa">{msgs.map((m, i) => <Bubble key={i} message={m} />)}</section>
-    {trace.length > 0 && <section className="assistant-trace" aria-label="Atividade das ferramentas"><h2>O que a Torre consultou</h2>{trace.map(t => <div key={t.id}><span aria-hidden="true">{t.running ? '◌' : t.ok ? '✓' : '!'}</span><span>{t.label}</span><small>{t.running ? 'Consultando…' : t.message}</small></div>)}</section>}
+    {trace.length > 0 && <section className="assistant-trace" aria-label="Atividade das ferramentas"><h2>O que a Torre consultou</h2>{trace.map(t => <div key={t.id}><span aria-hidden="true">{t.running ? '◌' : t.ok ? '✓' : '!'}</span><span>{t.label} {t.name && <code className="tool-name" title="Ferramenta MCP chamada pelo modelo">{t.name}</code>}</span><small>{t.running ? 'Consultando…' : t.message}</small></div>)}</section>}
     {error && <div role="alert" className="assistant-error">{error}</div>}
     <section className="assistant-actions" aria-label="Operações e aprovações"><div className="row"><h2>Operações desta sessão</h2><Button size="xsmall" onClick={refreshActions} disabled={decisionBusy}>Atualizar ações</Button></div>{actions.length === 0 ? <p className="assistant-muted">Quando você pedir uma alteração, a prévia e o botão de aprovação aparecerão aqui.</p> : actions.map(a => <ActionCard key={a.id} action={a} onDecide={decide} disabled={busy || decisionBusy} />)}</section>
     <div ref={end} />

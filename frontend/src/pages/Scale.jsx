@@ -5,7 +5,7 @@ import Button from '@leafygreen-ui/button'
 import Banner from '@leafygreen-ui/banner'
 import Badge from '@leafygreen-ui/badge'
 import Card from '@leafygreen-ui/card'
-import { KpiGrid, Kpi, Section, Empty } from '../components.jsx'
+import { KpiGrid, Kpi, Section, Empty, AtlasCapability } from '../components.jsx'
 import { getScaling, getLiveMetrics, scaleCluster } from '../api.js'
 import { ClusterPicker } from './_picker.jsx'
 
@@ -55,6 +55,7 @@ export default function Scale({ clusters, config }) {
   if (!sel) return (
     <>
       <div className="page-head"><H1 style={{ color: 'var(--text-pri)' }}>Scale</H1></div>
+      <AtlasCapability screen="scale" />
       <Empty icon="📈" title="Nenhum cluster encontrado" hint="Verifique as credenciais do Atlas no servidor (.env) e recarregue a página." />
     </>
   )
@@ -75,6 +76,7 @@ export default function Scale({ clusters, config }) {
   return (
     <>
       <div className="page-head"><H1 style={{ color: 'var(--text-pri)' }}>Scale</H1></div>
+      <AtlasCapability screen="scale" />
       <div className="row" style={{ marginBottom: 16 }}>
         <ClusterPicker clusters={clusters} value={sel} onChange={setSel} />
       </div>

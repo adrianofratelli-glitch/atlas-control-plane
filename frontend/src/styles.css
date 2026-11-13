@@ -367,3 +367,14 @@ pre { background: var(--bg-secondary); border: 1px solid var(--border-subtle); b
   .assistant-action { padding: 14px; }
   .assistant-composer > .row { flex-wrap: wrap; }
 }
+
+/* "Demonstra no Atlas": capability + server calls behind each screen (atlas-capabilities.js) */
+.atlas-capability { margin: -14px 0 20px; font-size: 12.5px; color: var(--text-sec); max-width: 100%; }
+.atlas-capability summary { cursor: pointer; list-style-position: inside; }
+.atlas-capability-label { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
+  color: var(--text-pri); background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 999px; padding: 1px 8px; margin-right: 6px; }
+.atlas-capability-body { margin-top: 8px; padding: 10px 12px; border-left: 2px solid #00A35C; background: var(--bg-secondary); border-radius: 0 8px 8px 0; }
+.atlas-capability-body p { margin: 0 0 8px; }
+.atlas-capability-title { font-size: 10.5px; color: var(--text-muted); margin-top: 6px; }
+.atlas-capability-body ul { margin: 4px 0 0; padding-left: 18px; font-size: 11.5px; overflow-wrap: anywhere; }
+.assistant-trace code.tool-name { font-size: 11px; color: var(--text-muted); margin-left: 4px; }

@@ -4,7 +4,7 @@ import { H1, H3, Body } from '@leafygreen-ui/typography'
 import Button from '@leafygreen-ui/button'
 import Banner from '@leafygreen-ui/banner'
 import Card from '@leafygreen-ui/card'
-import { KpiGrid, Kpi, Section, Empty } from '../components.jsx'
+import { KpiGrid, Kpi, Section, Empty, AtlasCapability } from '../components.jsx'
 import { getHealth } from '../api.js'
 import { ClusterPicker } from './_picker.jsx'
 
@@ -22,6 +22,7 @@ export default function Health({ clusters }) {
   return (
     <>
       <div className="page-head"><H1 style={{ color: 'var(--text-pri)' }}>Health Score</H1></div>
+      <AtlasCapability screen="health" />
       <div className="row" style={{ marginBottom: 18 }}>
         <ClusterPicker clusters={clusters} value={sel} onChange={setSel} />
         <Button variant="primary" onClick={calc} disabled={busy}>{busy ? 'Calculando…' : '❤️ Calcular Health Score'}</Button>

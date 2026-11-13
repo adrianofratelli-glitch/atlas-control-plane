@@ -4,7 +4,7 @@ import { H1, Body } from '@leafygreen-ui/typography'
 import Button from '@leafygreen-ui/button'
 import Banner from '@leafygreen-ui/banner'
 import Card from '@leafygreen-ui/card'
-import { Section, Empty } from '../components.jsx'
+import { Section, Empty, AtlasCapability } from '../components.jsx'
 import { getPA, createIndex, streamAnalyze, downloadReport } from '../api.js'
 import { ClusterPicker } from './_picker.jsx'
 import QueryDetails from '../components/QueryDetails.jsx'
@@ -47,6 +47,7 @@ export default function PerformanceAdvisor({ clusters, config }) {
   return (
     <>
       <div className="page-head"><H1 style={{ color: 'var(--text-pri)' }}>Performance Advisor</H1></div>
+      <AtlasCapability screen="indexes" />
       <div className="row" style={{ marginBottom: 18 }}>
         <ClusterPicker clusters={clusters} value={sel} onChange={setSel} />
         <Button variant="primary" onClick={load} disabled={busy}>{busy ? 'Consultando…' : '🔍 Buscar Recomendações'}</Button>
